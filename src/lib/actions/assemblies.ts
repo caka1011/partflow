@@ -1,42 +1,53 @@
-import { createClient } from "@supabase/supabase-js";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-/**
- * Custom fetch that sanitizes header values to avoid ISO-8859-1 errors.
- * Next.js or Supabase internals can sometimes leak non-ASCII chars into headers.
- */
-function safeFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit
-): Promise<Response> {
-  if (init?.headers) {
-    const clean: Record<string, string> = {};
-    if (init.headers instanceof Headers) {
-      init.headers.forEach((v, k) => {
-        clean[k] = v;
-      });
-    } else if (Array.isArray(init.headers)) {
-      for (const [k, v] of init.headers) {
-        clean[k] = v;
-      }
-    } else {
-      Object.assign(clean, init.headers);
-    }
-    // Sanitize every header value
-    for (const key of Object.keys(clean)) {
-      // eslint-disable-next-line no-control-regex
-      clean[key] = clean[key].replace(/[^\x00-\xFF]/g, "?");
-    }
-    return fetch(input, { ...init, headers: clean });
+const JSON_HEADERS: Record<string, string> = {
+  "Content-Type": "application/json",
+  apikey: SUPABASE_KEY,
+  Authorization: `Bearer ${SUPABASE_KEY}`,
+  Prefer: "return=representation",
+};
+
+async function supabasePost(table: string, body: unknown) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message ?? "Request failed");
   }
-  return fetch(input, init);
+  return res.json();
 }
 
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { fetch: safeFetch } }
-  );
+async function supabaseGet(table: string, query: string) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    method: "GET",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message ?? "Request failed");
+  }
+  return res.json();
+}
+
+async function supabaseDelete(table: string, query: string) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    method: "DELETE",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message ?? "Request failed");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -60,50 +71,35 @@ interface CreateAssemblyInput {
 }
 
 export async function createAssembly(input: CreateAssemblyInput) {
-  const supabase = getSupabase();
+  try {
+    const totalQuantity = input.items.reduce((sum, i) => sum + i.quantity, 0);
 
-  const totalQuantity = input.items.reduce((sum, i) => sum + i.quantity, 0);
-
-  // 1. Insert the assembly row
-  const { data: assembly, error: assemblyError } = await supabase
-    .from("assemblies")
-    .insert({
+    // 1. Insert assembly
+    const [assembly] = await supabasePost("assemblies", {
       name: input.name,
       customer: input.customer,
       status: "Draft",
       line_item_count: input.items.length,
       total_quantity: totalQuantity,
-    })
-    .select()
-    .single();
+    });
 
-  if (assemblyError || !assembly) {
+    // 2. Insert BOM line items in batches
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < input.items.length; i += BATCH_SIZE) {
+      const batch = input.items.slice(i, i + BATCH_SIZE).map((item) => ({
+        assembly_id: assembly.id,
+        ...item,
+      }));
+      await supabasePost("bom_line_items", batch);
+    }
+
+    return { success: true as const, data: assembly };
+  } catch (e) {
     return {
       success: false as const,
-      error: assemblyError?.message ?? "Failed to create assembly",
+      error: e instanceof Error ? e.message : "Failed to create assembly",
     };
   }
-
-  // 2. Insert BOM line items in batches of 500
-  const BATCH_SIZE = 500;
-  for (let i = 0; i < input.items.length; i += BATCH_SIZE) {
-    const batch = input.items.slice(i, i + BATCH_SIZE).map((item) => ({
-      assembly_id: assembly.id,
-      ...item,
-    }));
-
-    const { error: itemsError } = await supabase
-      .from("bom_line_items")
-      .insert(batch);
-
-    if (itemsError) {
-      // Clean up: delete the assembly (cascade removes any inserted items)
-      await supabase.from("assemblies").delete().eq("id", assembly.id);
-      return { success: false as const, error: itemsError.message };
-    }
-  }
-
-  return { success: true as const, data: assembly };
 }
 
 // ---------------------------------------------------------------------------
@@ -111,51 +107,50 @@ export async function createAssembly(input: CreateAssemblyInput) {
 // ---------------------------------------------------------------------------
 
 export async function listAssemblies() {
-  const supabase = getSupabase();
-
-  const { data, error } = await supabase
-    .from("assemblies")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    return { success: false as const, error: error.message, data: [] as never[] };
+  try {
+    const data = await supabaseGet(
+      "assemblies",
+      "select=*&order=created_at.desc"
+    );
+    return { success: true as const, data: data ?? [] };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : "Failed to list assemblies",
+      data: [] as never[],
+    };
   }
-
-  return { success: true as const, data: data ?? [] };
 }
 
 // ---------------------------------------------------------------------------
-// Get Assembly Detail (with BOM line items)
+// Get Assembly Detail
 // ---------------------------------------------------------------------------
 
 export async function getAssembly(id: string) {
-  const supabase = getSupabase();
+  try {
+    const assemblies = await supabaseGet(
+      "assemblies",
+      `select=*&id=eq.${id}`
+    );
+    if (!assemblies?.length) {
+      return { success: false as const, error: "Assembly not found" };
+    }
 
-  const { data: assembly, error: assemblyError } = await supabase
-    .from("assemblies")
-    .select("*")
-    .eq("id", id)
-    .single();
+    const lineItems = await supabaseGet(
+      "bom_line_items",
+      `select=*&assembly_id=eq.${id}&order=line_number.asc`
+    );
 
-  if (assemblyError || !assembly) {
-    return { success: false as const, error: "Assembly not found" };
+    return {
+      success: true as const,
+      data: { ...assemblies[0], bom_line_items: lineItems ?? [] },
+    };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : "Failed to load assembly",
+    };
   }
-
-  const { data: lineItems, error: itemsError } = await supabase
-    .from("bom_line_items")
-    .select("*")
-    .eq("assembly_id", id)
-    .order("line_number", { ascending: true });
-
-  if (itemsError) {
-    return { success: false as const, error: itemsError.message };
-  }
-
-  return {
-    success: true as const,
-    data: { ...assembly, bom_line_items: lineItems ?? [] },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -163,16 +158,13 @@ export async function getAssembly(id: string) {
 // ---------------------------------------------------------------------------
 
 export async function deleteAssembly(id: string) {
-  const supabase = getSupabase();
-
-  const { error } = await supabase
-    .from("assemblies")
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    return { success: false as const, error: error.message };
+  try {
+    await supabaseDelete("assemblies", `id=eq.${id}`);
+    return { success: true as const };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : "Failed to delete assembly",
+    };
   }
-
-  return { success: true as const };
 }
