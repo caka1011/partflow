@@ -12,8 +12,8 @@ function getConfig() {
   if (!rawUrl || !rawKey) {
     throw new Error(`Missing env vars: URL=${!!rawUrl}, KEY=${!!rawKey}`);
   }
-  const url = ascii(rawUrl.trim());
-  const key = ascii(rawKey.trim());
+  const url = ascii(rawUrl).trim();
+  const key = ascii(rawKey).trim();
   return {
     url,
     headers: {
