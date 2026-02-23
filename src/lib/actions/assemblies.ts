@@ -1,57 +1,6 @@
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-const JSON_HEADERS: Record<string, string> = {
-  "Content-Type": "application/json",
-  apikey: SUPABASE_KEY,
-  Authorization: `Bearer ${SUPABASE_KEY}`,
-  Prefer: "return=representation",
-};
-
-async function supabasePost(table: string, body: unknown) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message ?? "Request failed");
-  }
-  return res.json();
-}
-
-async function supabaseGet(table: string, query: string) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
-    method: "GET",
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message ?? "Request failed");
-  }
-  return res.json();
-}
-
-async function supabaseDelete(table: string, query: string) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
-    method: "DELETE",
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message ?? "Request failed");
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Create Assembly + BOM line items
+// Assembly actions — calls local API routes (which proxy to Supabase on the
+// server side, avoiding browser ISO-8859-1 header restrictions).
 // ---------------------------------------------------------------------------
 
 interface CreateAssemblyInput {
@@ -72,28 +21,17 @@ interface CreateAssemblyInput {
 
 export async function createAssembly(input: CreateAssemblyInput) {
   try {
-    const totalQuantity = input.items.reduce((sum, i) => sum + i.quantity, 0);
-
-    // 1. Insert assembly
-    const [assembly] = await supabasePost("assemblies", {
-      name: input.name,
-      customer: input.customer,
-      status: "Draft",
-      line_item_count: input.items.length,
-      total_quantity: totalQuantity,
+    const res = await fetch("/api/assemblies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
     });
-
-    // 2. Insert BOM line items in batches
-    const BATCH_SIZE = 500;
-    for (let i = 0; i < input.items.length; i += BATCH_SIZE) {
-      const batch = input.items.slice(i, i + BATCH_SIZE).map((item) => ({
-        assembly_id: assembly.id,
-        ...item,
-      }));
-      await supabasePost("bom_line_items", batch);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new Error(err.error ?? "Failed to create assembly");
     }
-
-    return { success: true as const, data: assembly };
+    const data = await res.json();
+    return { success: true as const, data };
   } catch (e) {
     return {
       success: false as const,
@@ -102,16 +40,14 @@ export async function createAssembly(input: CreateAssemblyInput) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// List Assemblies
-// ---------------------------------------------------------------------------
-
 export async function listAssemblies() {
   try {
-    const data = await supabaseGet(
-      "assemblies",
-      "select=*&order=created_at.desc"
-    );
+    const res = await fetch("/api/assemblies");
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new Error(err.error ?? "Failed to list assemblies");
+    }
+    const data = await res.json();
     return { success: true as const, data: data ?? [] };
   } catch (e) {
     return {
@@ -122,29 +58,15 @@ export async function listAssemblies() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Get Assembly Detail
-// ---------------------------------------------------------------------------
-
 export async function getAssembly(id: string) {
   try {
-    const assemblies = await supabaseGet(
-      "assemblies",
-      `select=*&id=eq.${id}`
-    );
-    if (!assemblies?.length) {
-      return { success: false as const, error: "Assembly not found" };
+    const res = await fetch(`/api/assemblies/${id}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new Error(err.error ?? "Failed to load assembly");
     }
-
-    const lineItems = await supabaseGet(
-      "bom_line_items",
-      `select=*&assembly_id=eq.${id}&order=line_number.asc`
-    );
-
-    return {
-      success: true as const,
-      data: { ...assemblies[0], bom_line_items: lineItems ?? [] },
-    };
+    const data = await res.json();
+    return { success: true as const, data };
   } catch (e) {
     return {
       success: false as const,
@@ -153,13 +75,13 @@ export async function getAssembly(id: string) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Delete Assembly
-// ---------------------------------------------------------------------------
-
 export async function deleteAssembly(id: string) {
   try {
-    await supabaseDelete("assemblies", `id=eq.${id}`);
+    const res = await fetch(`/api/assemblies/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new Error(err.error ?? "Failed to delete assembly");
+    }
     return { success: true as const };
   } catch (e) {
     return {
