@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 
+/** Strip any non-ASCII characters from a string */
+function ascii(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/[^\x20-\x7E]/g, "");
+}
+
 function getConfig() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error(`Missing env vars: URL=${!!url}, KEY=${!!key}`);
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!rawUrl || !rawKey) {
+    throw new Error(`Missing env vars: URL=${!!rawUrl}, KEY=${!!rawKey}`);
   }
+  const url = ascii(rawUrl.trim());
+  const key = ascii(rawKey.trim());
   return {
     url,
     headers: {
