@@ -1,7 +1,14 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Create Assembly + BOM line items
@@ -24,7 +31,7 @@ interface CreateAssemblyInput {
 }
 
 export async function createAssembly(input: CreateAssemblyInput) {
-  const supabase = await createClient();
+  const supabase = getSupabase();
 
   const totalQuantity = input.items.reduce((sum, i) => sum + i.quantity, 0);
 
@@ -76,7 +83,7 @@ export async function createAssembly(input: CreateAssemblyInput) {
 // ---------------------------------------------------------------------------
 
 export async function listAssemblies() {
-  const supabase = await createClient();
+  const supabase = getSupabase();
 
   const { data, error } = await supabase
     .from("assemblies")
@@ -95,7 +102,7 @@ export async function listAssemblies() {
 // ---------------------------------------------------------------------------
 
 export async function getAssembly(id: string) {
-  const supabase = await createClient();
+  const supabase = getSupabase();
 
   const { data: assembly, error: assemblyError } = await supabase
     .from("assemblies")
@@ -128,7 +135,7 @@ export async function getAssembly(id: string) {
 // ---------------------------------------------------------------------------
 
 export async function deleteAssembly(id: string) {
-  const supabase = await createClient();
+  const supabase = getSupabase();
 
   const { error } = await supabase
     .from("assemblies")
