@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { label: "Parts Database", href: "/", icon: Database },
-  { label: "BOMs", href: "#", icon: FileSpreadsheet },
+  { label: "BOMs", href: "/assemblies", icon: FileSpreadsheet },
   { label: "Sourcing", href: "/sourcing", icon: ShoppingCart },
   {
     label: "Market Intelligence",

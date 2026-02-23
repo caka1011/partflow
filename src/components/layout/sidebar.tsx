@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 
 const quickActions = [
   { label: "New Search", icon: Search, href: "/" },
-  { label: "Import BOM", icon: Upload, href: "#" },
+  { label: "Import BOM", icon: Upload, href: "/assemblies" },
   { label: "Risk Scan", icon: ShieldAlert, href: "/risk-manager" },
 ];
 
