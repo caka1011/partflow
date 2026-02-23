@@ -24,6 +24,23 @@ export interface ParsedBom {
 }
 
 /**
+ * Replaces non-ISO-8859-1 characters with ASCII equivalents.
+ * Excel files often contain special Unicode symbols (e.g. fancy question marks)
+ * that break HTTP header serialization in fetch/Supabase calls.
+ */
+function sanitize(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/[^\x00-\xFF]/g, (ch) => {
+    // Common replacements for Unicode punctuation
+    if (/[\u2018\u2019\u201A\u201B]/u.test(ch)) return "'";
+    if (/[\u201C\u201D\u201E\u201F]/u.test(ch)) return '"';
+    if (/[\u2010-\u2015]/u.test(ch)) return "-";
+    if (/[\u2026]/u.test(ch)) return "...";
+    return "?";
+  });
+}
+
+/**
  * Detects whether a row is a section header.
  * Section headers only have a value in the first column with no shorttext.
  */
@@ -84,15 +101,15 @@ export function parseBomFile(buffer: ArrayBuffer, fileName: string): ParsedBom {
     if (isEmptyRow(row)) continue;
 
     if (isSectionHeader(row)) {
-      currentSection = String(row[0]).trim();
+      currentSection = sanitize(String(row[0]).trim());
       if (!sections.includes(currentSection)) {
         sections.push(currentSection);
       }
       continue;
     }
 
-    const value = row[0] != null ? String(row[0]).trim() : "";
-    const shorttext = row[1] != null ? String(row[1]).trim() : "";
+    const value = row[0] != null ? sanitize(String(row[0]).trim()) : "";
+    const shorttext = row[1] != null ? sanitize(String(row[1]).trim()) : "";
 
     // Skip rows with no shorttext (no real component data)
     if (!shorttext) continue;
@@ -101,10 +118,10 @@ export function parseBomFile(buffer: ArrayBuffer, fileName: string): ParsedBom {
     const quantity =
       rawQty != null && rawQty !== "" ? Number(rawQty) : 0;
 
-    const sup1Name = row[3] != null ? String(row[3]).trim() : "";
-    const sup1Order = row[4] != null ? String(row[4]).trim() : "";
-    const sup2Name = row[5] != null ? String(row[5]).trim() : "";
-    const sup2Order = row[6] != null ? String(row[6]).trim() : "";
+    const sup1Name = row[3] != null ? sanitize(String(row[3]).trim()) : "";
+    const sup1Order = row[4] != null ? sanitize(String(row[4]).trim()) : "";
+    const sup2Name = row[5] != null ? sanitize(String(row[5]).trim()) : "";
+    const sup2Order = row[6] != null ? sanitize(String(row[6]).trim()) : "";
 
     idCounter++;
     items.push({
