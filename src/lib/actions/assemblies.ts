@@ -1,14 +1,4 @@
-"use server";
-
-import { createClient } from "@supabase/supabase-js";
-import { revalidatePath } from "next/cache";
-
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-}
+import { createClient } from "@/lib/supabase/client";
 
 // ---------------------------------------------------------------------------
 // Create Assembly + BOM line items
@@ -31,7 +21,7 @@ interface CreateAssemblyInput {
 }
 
 export async function createAssembly(input: CreateAssemblyInput) {
-  const supabase = getSupabase();
+  const supabase = createClient();
 
   const totalQuantity = input.items.reduce((sum, i) => sum + i.quantity, 0);
 
@@ -74,7 +64,6 @@ export async function createAssembly(input: CreateAssemblyInput) {
     }
   }
 
-  revalidatePath("/assemblies");
   return { success: true as const, data: assembly };
 }
 
@@ -83,7 +72,7 @@ export async function createAssembly(input: CreateAssemblyInput) {
 // ---------------------------------------------------------------------------
 
 export async function listAssemblies() {
-  const supabase = getSupabase();
+  const supabase = createClient();
 
   const { data, error } = await supabase
     .from("assemblies")
@@ -102,7 +91,7 @@ export async function listAssemblies() {
 // ---------------------------------------------------------------------------
 
 export async function getAssembly(id: string) {
-  const supabase = getSupabase();
+  const supabase = createClient();
 
   const { data: assembly, error: assemblyError } = await supabase
     .from("assemblies")
@@ -135,7 +124,7 @@ export async function getAssembly(id: string) {
 // ---------------------------------------------------------------------------
 
 export async function deleteAssembly(id: string) {
-  const supabase = getSupabase();
+  const supabase = createClient();
 
   const { error } = await supabase
     .from("assemblies")
@@ -146,6 +135,5 @@ export async function deleteAssembly(id: string) {
     return { success: false as const, error: error.message };
   }
 
-  revalidatePath("/assemblies");
   return { success: true as const };
 }
