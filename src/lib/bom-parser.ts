@@ -78,7 +78,8 @@ function isEmptyRow(row: (string | number | undefined)[]): boolean {
  *   F: Supplier 2
  *   G: Order-# 2
  */
-export function parseBomFile(buffer: ArrayBuffer, fileName: string): ParsedBom {
+export function parseBomFile(buffer: ArrayBuffer, rawFileName: string): ParsedBom {
+  const fileName = sanitize(rawFileName);
   const workbook = XLSX.read(buffer, { type: "array" });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];

@@ -1,9 +1,41 @@
 import { createClient } from "@supabase/supabase-js";
 
+/**
+ * Custom fetch that sanitizes header values to avoid ISO-8859-1 errors.
+ * Next.js or Supabase internals can sometimes leak non-ASCII chars into headers.
+ */
+function safeFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<Response> {
+  if (init?.headers) {
+    const clean: Record<string, string> = {};
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((v, k) => {
+        clean[k] = v;
+      });
+    } else if (Array.isArray(init.headers)) {
+      for (const [k, v] of init.headers) {
+        clean[k] = v;
+      }
+    } else {
+      Object.assign(clean, init.headers);
+    }
+    // Sanitize every header value
+    for (const key of Object.keys(clean)) {
+      // eslint-disable-next-line no-control-regex
+      clean[key] = clean[key].replace(/[^\x00-\xFF]/g, "?");
+    }
+    return fetch(input, { ...init, headers: clean });
+  }
+  return fetch(input, init);
+}
+
 function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { fetch: safeFetch } }
   );
 }
 
