@@ -42,6 +42,23 @@ export interface Assembly {
   name: string;
   customer: string;
   status: string;
+  line_item_count: number;
+  total_quantity: number;
+  created_at: string;
+}
+
+export interface BomLineItemRow {
+  id: string;
+  assembly_id: string;
+  line_number: number;
+  section: string;
+  value: string;
+  shorttext: string;
+  quantity: number;
+  supplier1_name: string | null;
+  supplier1_order_number: string | null;
+  supplier2_name: string | null;
+  supplier2_order_number: string | null;
   created_at: string;
 }
 

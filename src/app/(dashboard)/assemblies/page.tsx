@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { type ColumnDef } from "@tanstack/react-table";
 import {
   PieChart,
@@ -24,6 +25,7 @@ import {
   Trash2,
   Eye,
   Plus,
+  Loader2,
 } from "lucide-react";
 
 import { KpiCard } from "@/components/layout/kpi-card";
@@ -56,9 +58,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { parseBomFile, type ParsedBom, type BomLineItem } from "@/lib/bom-parser";
+import {
+  createAssembly,
+  listAssemblies,
+  deleteAssembly,
+} from "@/lib/actions/assemblies";
 
 // ---------------------------------------------------------------------------
-// Mock existing assemblies
+// Types
 // ---------------------------------------------------------------------------
 
 interface AssemblyRow {
@@ -71,102 +78,8 @@ interface AssemblyRow {
   created_at: string;
 }
 
-const mockAssemblies: AssemblyRow[] = [
-  {
-    id: "asm-1",
-    name: "Power Inverter Board v2.1",
-    customer: "AutoDrive GmbH",
-    status: "Active",
-    partsCount: 87,
-    totalQty: 342,
-    created_at: "2026-01-15",
-  },
-  {
-    id: "asm-2",
-    name: "Sensor Module REV-C",
-    customer: "MedTech Solutions",
-    status: "Active",
-    partsCount: 43,
-    totalQty: 156,
-    created_at: "2026-01-22",
-  },
-  {
-    id: "asm-3",
-    name: "Motor Controller PCB",
-    customer: "E-Motion Corp",
-    status: "Draft",
-    partsCount: 124,
-    totalQty: 589,
-    created_at: "2026-02-03",
-  },
-];
-
 // ---------------------------------------------------------------------------
-// Assembly table columns
-// ---------------------------------------------------------------------------
-
-const assemblyColumns: ColumnDef<AssemblyRow>[] = [
-  {
-    accessorKey: "name",
-    header: "Assembly Name",
-    cell: ({ row }) => (
-      <div>
-        <p className="font-medium">{row.original.name}</p>
-        <p className="text-xs text-muted-foreground">{row.original.customer}</p>
-      </div>
-    ),
-  },
-  {
-    accessorKey: "status",
-    header: "Status",
-    cell: ({ row }) => {
-      const status = row.original.status;
-      return (
-        <Badge
-          className={
-            status === "Active"
-              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-              : "bg-slate-100 text-slate-600 border-slate-200"
-          }
-        >
-          {status}
-        </Badge>
-      );
-    },
-  },
-  {
-    accessorKey: "partsCount",
-    header: "Line Items",
-    cell: ({ row }) => row.original.partsCount.toLocaleString(),
-  },
-  {
-    accessorKey: "totalQty",
-    header: "Total Qty",
-    cell: ({ row }) => row.original.totalQty.toLocaleString(),
-  },
-  {
-    accessorKey: "created_at",
-    header: "Created",
-  },
-  {
-    id: "actions",
-    header: "Actions",
-    cell: () => (
-      <div className="flex items-center gap-1">
-        <Button size="sm" variant="outline" className="gap-1.5">
-          <Eye className="size-3.5" />
-          View
-        </Button>
-        <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600">
-          <Trash2 className="size-3.5" />
-        </Button>
-      </div>
-    ),
-  },
-];
-
-// ---------------------------------------------------------------------------
-// BOM preview table columns
+// BOM preview table columns (static — no callbacks needed)
 // ---------------------------------------------------------------------------
 
 const bomPreviewColumns: ColumnDef<BomLineItem>[] = [
@@ -214,7 +127,9 @@ const bomPreviewColumns: ColumnDef<BomLineItem>[] = [
       return (
         <div>
           <p className="text-sm font-medium">{s.name}</p>
-          <p className="font-mono text-xs text-muted-foreground">{s.orderNumber}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            {s.orderNumber}
+          </p>
         </div>
       );
     },
@@ -228,7 +143,9 @@ const bomPreviewColumns: ColumnDef<BomLineItem>[] = [
       return (
         <div>
           <p className="text-sm font-medium">{s.name}</p>
-          <p className="font-mono text-xs text-muted-foreground">{s.orderNumber}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            {s.orderNumber}
+          </p>
         </div>
       );
     },
@@ -257,12 +174,127 @@ const PIE_COLORS = [
 // ---------------------------------------------------------------------------
 
 export default function AssembliesPage() {
-  const [assemblies, setAssemblies] = useState<AssemblyRow[]>(mockAssemblies);
+  const [assemblies, setAssemblies] = useState<AssemblyRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [parsedBom, setParsedBom] = useState<ParsedBom | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // ---- Load assemblies from DB ----
+
+  const fetchAssemblies = useCallback(async () => {
+    const result = await listAssemblies();
+    if (result.success) {
+      setAssemblies(
+        result.data.map((a: Record<string, unknown>) => ({
+          id: a.id as string,
+          name: a.name as string,
+          customer: (a.customer as string) || "-",
+          status: a.status as string,
+          partsCount: (a.line_item_count as number) ?? 0,
+          totalQty: (a.total_quantity as number) ?? 0,
+          created_at: new Date(a.created_at as string)
+            .toISOString()
+            .split("T")[0],
+        }))
+      );
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchAssemblies();
+  }, [fetchAssemblies]);
+
+  // ---- Delete handler ----
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!confirm("Delete this assembly and all its BOM data?")) return;
+      const result = await deleteAssembly(id);
+      if (result.success) {
+        setAssemblies((prev) => prev.filter((a) => a.id !== id));
+      }
+    },
+    []
+  );
+
+  // ---- Assembly table columns (inside component for Link/callback access) ----
+
+  const assemblyColumns: ColumnDef<AssemblyRow>[] = useMemo(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Assembly Name",
+        cell: ({ row }) => (
+          <div>
+            <p className="font-medium">{row.original.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {row.original.customer}
+            </p>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => {
+          const status = row.original.status;
+          return (
+            <Badge
+              className={
+                status === "Active"
+                  ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                  : "bg-slate-100 text-slate-600 border-slate-200"
+              }
+            >
+              {status}
+            </Badge>
+          );
+        },
+      },
+      {
+        accessorKey: "partsCount",
+        header: "Line Items",
+        cell: ({ row }) => row.original.partsCount.toLocaleString(),
+      },
+      {
+        accessorKey: "totalQty",
+        header: "Total Qty",
+        cell: ({ row }) => row.original.totalQty.toLocaleString(),
+      },
+      {
+        accessorKey: "created_at",
+        header: "Created",
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" className="gap-1.5" asChild>
+              <Link href={`/assemblies/${row.original.id}`}>
+                <Eye className="size-3.5" />
+                View
+              </Link>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-red-500 hover:text-red-600"
+              onClick={() => handleDelete(row.original.id)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [handleDelete]
+  );
 
   // ---- File handling ----
 
@@ -276,7 +308,9 @@ export default function AssembliesPage() {
       !file.name.endsWith(".xls") &&
       !file.name.endsWith(".csv")
     ) {
-      setParseError("Unsupported file format. Please upload .xlsx, .xls, or .csv");
+      setParseError(
+        "Unsupported file format. Please upload .xlsx, .xls, or .csv"
+      );
       return;
     }
 
@@ -323,23 +357,40 @@ export default function AssembliesPage() {
     [handleFile]
   );
 
-  const handleImport = useCallback(() => {
-    if (!parsedBom) return;
+  // ---- Import handler (saves to DB) ----
 
-    // Add to assemblies list
-    const newAssembly: AssemblyRow = {
-      id: `asm-${Date.now()}`,
+  const handleImport = useCallback(async () => {
+    if (!parsedBom) return;
+    setSaving(true);
+    setParseError(null);
+
+    const items = parsedBom.items.map((item, index) => ({
+      line_number: index + 1,
+      section: item.section,
+      value: item.value,
+      shorttext: item.shorttext,
+      quantity: item.quantity,
+      supplier1_name: item.supplier1?.name ?? null,
+      supplier1_order_number: item.supplier1?.orderNumber ?? null,
+      supplier2_name: item.supplier2?.name ?? null,
+      supplier2_order_number: item.supplier2?.orderNumber ?? null,
+    }));
+
+    const result = await createAssembly({
       name: parsedBom.fileName.replace(/\.(xlsx|xls|csv)$/i, ""),
       customer: "-",
-      status: "Draft",
-      partsCount: parsedBom.totalLines,
-      totalQty: parsedBom.totalQuantity,
-      created_at: new Date().toISOString().split("T")[0],
-    };
+      items,
+    });
 
-    setAssemblies((prev) => [newAssembly, ...prev]);
-    setImportSuccess(true);
-  }, [parsedBom]);
+    setSaving(false);
+
+    if (result.success) {
+      setImportSuccess(true);
+      await fetchAssemblies();
+    } else {
+      setParseError(result.error ?? "Failed to save assembly");
+    }
+  }, [parsedBom, fetchAssemblies]);
 
   const handleCloseDialog = useCallback(() => {
     setUploadOpen(false);
@@ -488,7 +539,9 @@ export default function AssembliesPage() {
                 {/* Summary cards */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="rounded-lg border bg-slate-50 p-3 text-center">
-                    <p className="text-2xl font-bold">{parsedBom.totalLines}</p>
+                    <p className="text-2xl font-bold">
+                      {parsedBom.totalLines}
+                    </p>
                     <p className="text-xs text-muted-foreground">Line Items</p>
                   </div>
                   <div className="rounded-lg border bg-slate-50 p-3 text-center">
@@ -551,11 +604,9 @@ export default function AssembliesPage() {
                           </TableCell>
                           <TableCell>
                             {item.supplier1 ? (
-                              <div>
-                                <span className="text-sm">
-                                  {item.supplier1.name}
-                                </span>
-                              </div>
+                              <span className="text-sm">
+                                {item.supplier1.name}
+                              </span>
                             ) : (
                               <span className="text-muted-foreground">-</span>
                             )}
@@ -580,13 +631,28 @@ export default function AssembliesPage() {
                   )}
                 </div>
 
+                {parseError && (
+                  <div className="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                    <AlertCircle className="size-4 shrink-0" />
+                    {parseError}
+                  </div>
+                )}
+
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setParsedBom(null)}>
                     Back
                   </Button>
-                  <Button className="gap-2" onClick={handleImport}>
-                    <Plus className="size-4" />
-                    Import as Assembly
+                  <Button
+                    className="gap-2"
+                    onClick={handleImport}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    {saving ? "Saving..." : "Import as Assembly"}
                   </Button>
                 </DialogFooter>
               </>
@@ -601,8 +667,8 @@ export default function AssembliesPage() {
                 <div className="text-center">
                   <p className="text-lg font-semibold">BOM Imported</p>
                   <p className="text-sm text-muted-foreground">
-                    {parsedBom?.totalLines} line items have been added as a new
-                    assembly.
+                    {parsedBom?.totalLines} line items have been saved to the
+                    database.
                   </p>
                 </div>
                 <Button onClick={handleCloseDialog}>Done</Button>
@@ -641,12 +707,18 @@ export default function AssembliesPage() {
       {/* ----------------------------------------------------------------- */}
       {/* 3. Assemblies data table                                          */}
       {/* ----------------------------------------------------------------- */}
-      <DataTable
-        columns={assemblyColumns}
-        data={assemblies}
-        searchKey="name"
-        searchPlaceholder="Search assemblies..."
-      />
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <DataTable
+          columns={assemblyColumns}
+          data={assemblies}
+          searchKey="name"
+          searchPlaceholder="Search assemblies..."
+        />
+      )}
 
       {/* ----------------------------------------------------------------- */}
       {/* 4. Last imported BOM analysis (shown after import)                 */}
@@ -660,7 +732,6 @@ export default function AssembliesPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Section breakdown bar chart */}
             <ChartContainer
               title="Components by Section"
               subtitle="Line items per BOM section"
@@ -693,7 +764,6 @@ export default function AssembliesPage() {
               </BarChart>
             </ChartContainer>
 
-            {/* Supplier distribution pie chart */}
             <ChartContainer
               title="Supplier Distribution"
               subtitle="Component references by supplier"
@@ -724,12 +794,9 @@ export default function AssembliesPage() {
             </ChartContainer>
           </div>
 
-          {/* Full parsed BOM table */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                Imported BOM Detail
-              </CardTitle>
+              <CardTitle className="text-base">Imported BOM Detail</CardTitle>
               <CardDescription>
                 All {parsedBom.totalLines} parsed line items from{" "}
                 {parsedBom.fileName}
