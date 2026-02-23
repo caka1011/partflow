@@ -1,7 +1,32 @@
 // ---------------------------------------------------------------------------
-// Assembly actions — calls local API routes (which proxy to Supabase on the
-// server side, avoiding browser ISO-8859-1 header restrictions).
+// Assembly actions — uses XMLHttpRequest to avoid browser fetch ByteString
+// header restrictions that were causing ISO-8859-1 errors.
 // ---------------------------------------------------------------------------
+
+function xhrRequest(
+  method: string,
+  url: string,
+  body?: unknown
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url, true);
+    if (body) {
+      xhr.setRequestHeader("Content-Type", "application/json");
+    }
+    xhr.onload = () => {
+      let data: unknown = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        data = null;
+      }
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
+    };
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.send(body ? JSON.stringify(body) : null);
+  });
+}
 
 interface CreateAssemblyInput {
   name: string;
@@ -21,17 +46,12 @@ interface CreateAssemblyInput {
 
 export async function createAssembly(input: CreateAssemblyInput) {
   try {
-    const res = await fetch("/api/assemblies", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
+    const res = await xhrRequest("POST", "/api/assemblies", input);
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Request failed" }));
-      throw new Error(err.error ?? "Failed to create assembly");
+      const err = res.data as { error?: string } | null;
+      throw new Error(err?.error ?? "Failed to create assembly");
     }
-    const data = await res.json();
-    return { success: true as const, data };
+    return { success: true as const, data: res.data };
   } catch (e) {
     return {
       success: false as const,
@@ -42,13 +62,12 @@ export async function createAssembly(input: CreateAssemblyInput) {
 
 export async function listAssemblies() {
   try {
-    const res = await fetch("/api/assemblies");
+    const res = await xhrRequest("GET", "/api/assemblies");
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Request failed" }));
-      throw new Error(err.error ?? "Failed to list assemblies");
+      const err = res.data as { error?: string } | null;
+      throw new Error(err?.error ?? "Failed to list assemblies");
     }
-    const data = await res.json();
-    return { success: true as const, data: data ?? [] };
+    return { success: true as const, data: (res.data ?? []) as Record<string, unknown>[] };
   } catch (e) {
     return {
       success: false as const,
@@ -60,13 +79,12 @@ export async function listAssemblies() {
 
 export async function getAssembly(id: string) {
   try {
-    const res = await fetch(`/api/assemblies/${id}`);
+    const res = await xhrRequest("GET", `/api/assemblies/${id}`);
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Request failed" }));
-      throw new Error(err.error ?? "Failed to load assembly");
+      const err = res.data as { error?: string } | null;
+      throw new Error(err?.error ?? "Failed to load assembly");
     }
-    const data = await res.json();
-    return { success: true as const, data };
+    return { success: true as const, data: res.data };
   } catch (e) {
     return {
       success: false as const,
@@ -77,10 +95,10 @@ export async function getAssembly(id: string) {
 
 export async function deleteAssembly(id: string) {
   try {
-    const res = await fetch(`/api/assemblies/${id}`, { method: "DELETE" });
+    const res = await xhrRequest("DELETE", `/api/assemblies/${id}`);
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Request failed" }));
-      throw new Error(err.error ?? "Failed to delete assembly");
+      const err = res.data as { error?: string } | null;
+      throw new Error(err?.error ?? "Failed to delete assembly");
     }
     return { success: true as const };
   } catch (e) {
