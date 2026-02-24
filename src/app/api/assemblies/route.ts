@@ -122,8 +122,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(assembly, { status: 201 });
   } catch (e) {
     console.error("POST /api/assemblies error:", e);
+    const cause = e instanceof Error && e.cause ? ` [cause: ${e.cause}]` : "";
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Internal server error" },
+      { error: (e instanceof Error ? e.message : "Internal server error") + cause },
       { status: 500 }
     );
   }
