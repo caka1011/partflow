@@ -26,8 +26,16 @@ export async function createAssembly(input: CreateAssemblyInput) {
       body: JSON.stringify(input),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Request failed" }));
-      throw new Error(err.error ?? "Failed to create assembly");
+      const text = await res.text();
+      let message = `HTTP ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        message = json.error ?? json.message ?? message;
+      } catch {
+        // Response wasn't JSON (e.g. Vercel HTML error page)
+        message = `HTTP ${res.status}: ${text.slice(0, 200)}`;
+      }
+      throw new Error(message);
     }
     const data = await res.json();
     return { success: true as const, data };

@@ -57,6 +57,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { name, customer, items } = body;
 
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { error: "No BOM items provided" },
+        { status: 400 }
+      );
+    }
+
     const totalQuantity = (items as { quantity: number }[]).reduce(
       (sum: number, i: { quantity: number }) => sum + i.quantity,
       0
@@ -75,11 +82,12 @@ export async function POST(req: NextRequest) {
       }),
     });
     if (!assemblyRes.ok) {
-      const err = await assemblyRes
-        .json()
-        .catch(() => ({ message: assemblyRes.statusText }));
+      const text = await assemblyRes.text();
+      console.error("Supabase assembly insert failed:", assemblyRes.status, text);
+      let message = "Failed to create assembly";
+      try { message = JSON.parse(text).message ?? message; } catch {}
       return NextResponse.json(
-        { error: err.message ?? "Failed to create assembly" },
+        { error: `${message} (${assemblyRes.status})` },
         { status: assemblyRes.status }
       );
     }
@@ -100,11 +108,12 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify(batch),
       });
       if (!bomRes.ok) {
-        const err = await bomRes
-          .json()
-          .catch(() => ({ message: bomRes.statusText }));
+        const text = await bomRes.text();
+        console.error("Supabase BOM insert failed:", bomRes.status, text);
+        let message = "Failed to insert BOM items";
+        try { message = JSON.parse(text).message ?? message; } catch {}
         return NextResponse.json(
-          { error: err.message ?? "Failed to insert BOM items" },
+          { error: `${message} (batch ${Math.floor(i / BATCH_SIZE) + 1}, status ${bomRes.status})` },
           { status: bomRes.status }
         );
       }
@@ -112,6 +121,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(assembly, { status: 201 });
   } catch (e) {
+    console.error("POST /api/assemblies error:", e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Internal server error" },
       { status: 500 }
