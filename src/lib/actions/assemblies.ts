@@ -82,6 +82,33 @@ export async function getAssembly(id: string) {
   }
 }
 
+export async function enrichAssembly(id: string) {
+  try {
+    const res = await fetch(`/api/assemblies/${id}/enrich`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = `HTTP ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        message = json.error ?? json.message ?? message;
+      } catch {
+        message = `HTTP ${res.status}: ${text.slice(0, 200)}`;
+      }
+      throw new Error(message);
+    }
+    const data = await res.json();
+    return { success: true as const, data };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : "Failed to enrich assembly",
+    };
+  }
+}
+
 export async function deleteAssembly(id: string) {
   try {
     const res = await fetch(`/api/assemblies/${id}`, { method: "DELETE" });

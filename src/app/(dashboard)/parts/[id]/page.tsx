@@ -228,6 +228,9 @@ const mockAssemblyParts: (AssemblyPart & { assembly: Assembly })[] = [
       line_item_count: 87,
       total_quantity: 342,
       created_at: "2024-01-10T00:00:00Z",
+      z2data_enrichment_status: "none",
+      z2data_enriched_count: 0,
+      z2data_total_enrichable: 0,
     },
   },
   {
@@ -244,6 +247,9 @@ const mockAssemblyParts: (AssemblyPart & { assembly: Assembly })[] = [
       line_item_count: 124,
       total_quantity: 589,
       created_at: "2025-06-01T00:00:00Z",
+      z2data_enrichment_status: "none",
+      z2data_enriched_count: 0,
+      z2data_total_enrichable: 0,
     },
   },
   {
@@ -260,6 +266,9 @@ const mockAssemblyParts: (AssemblyPart & { assembly: Assembly })[] = [
       line_item_count: 43,
       total_quantity: 156,
       created_at: "2024-09-20T00:00:00Z",
+      z2data_enrichment_status: "none",
+      z2data_enriched_count: 0,
+      z2data_total_enrichable: 0,
     },
   },
   {
@@ -276,6 +285,9 @@ const mockAssemblyParts: (AssemblyPart & { assembly: Assembly })[] = [
       line_item_count: 56,
       total_quantity: 210,
       created_at: "2025-11-05T00:00:00Z",
+      z2data_enrichment_status: "none",
+      z2data_enriched_count: 0,
+      z2data_total_enrichable: 0,
     },
   },
 ];

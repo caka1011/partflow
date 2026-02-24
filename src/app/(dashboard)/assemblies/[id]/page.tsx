@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -24,6 +24,10 @@ import {
   Building2,
   Loader2,
   AlertCircle,
+  Zap,
+  ExternalLink,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
 import { KpiCard } from "@/components/layout/kpi-card";
@@ -31,6 +35,7 @@ import { DataTable } from "@/components/data-table/data-table";
 import { ChartContainer } from "@/components/charts/chart-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Card,
   CardContent,
@@ -53,7 +58,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { getAssembly, deleteAssembly } from "@/lib/actions/assemblies";
+import {
+  getAssembly,
+  deleteAssembly,
+  enrichAssembly,
+} from "@/lib/actions/assemblies";
 import type { BomLineItemRow } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -74,7 +83,27 @@ const PIE_COLORS = [
 ];
 
 // ---------------------------------------------------------------------------
-// BOM line item table columns
+// Lifecycle badge helper
+// ---------------------------------------------------------------------------
+
+function LifecycleBadge({ status }: { status: string | null }) {
+  if (!status) return <span className="text-muted-foreground">-</span>;
+  const s = status.toLowerCase();
+  let className = "bg-slate-100 text-slate-600 border-slate-200";
+  if (s === "active" || s === "production") {
+    className = "bg-emerald-100 text-emerald-700 border-emerald-200";
+  } else if (s === "nrnd" || s === "not recommended") {
+    className = "bg-amber-100 text-amber-700 border-amber-200";
+  } else if (s === "eol" || s === "end of life") {
+    className = "bg-orange-100 text-orange-700 border-orange-200";
+  } else if (s === "obsolete") {
+    className = "bg-red-100 text-red-700 border-red-200";
+  }
+  return <Badge className={className}>{status}</Badge>;
+}
+
+// ---------------------------------------------------------------------------
+// BOM line item table columns (with Z2Data enrichment)
 // ---------------------------------------------------------------------------
 
 const bomColumns: ColumnDef<BomLineItemRow>[] = [
@@ -117,6 +146,73 @@ const bomColumns: ColumnDef<BomLineItemRow>[] = [
         <span className={qty === 0 ? "text-muted-foreground" : "font-medium"}>
           {qty || "-"}
         </span>
+      );
+    },
+  },
+  {
+    id: "lifecycle",
+    header: "Lifecycle",
+    cell: ({ row }) => {
+      if (row.original.z2data_error) {
+        return (
+          <span className="text-xs text-red-500" title={row.original.z2data_error}>
+            Error
+          </span>
+        );
+      }
+      return <LifecycleBadge status={row.original.z2data_lifecycle_status} />;
+    },
+  },
+  {
+    id: "compliance",
+    header: "Compliance",
+    cell: ({ row }) => {
+      const rohs = row.original.z2data_rohs;
+      const reach = row.original.z2data_reach;
+      if (!rohs && !reach) return <span className="text-muted-foreground">-</span>;
+      return (
+        <div className="flex flex-wrap gap-1">
+          {rohs && (
+            <Badge
+              className={
+                rohs.toLowerCase() === "compliant"
+                  ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                  : "bg-amber-100 text-amber-700 border-amber-200"
+              }
+            >
+              RoHS: {rohs}
+            </Badge>
+          )}
+          {reach && (
+            <Badge
+              className={
+                reach.toLowerCase() === "compliant"
+                  ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                  : "bg-amber-100 text-amber-700 border-amber-200"
+              }
+            >
+              REACH: {reach}
+            </Badge>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    id: "datasheet",
+    header: "Datasheet",
+    cell: ({ row }) => {
+      const url = row.original.z2data_datasheet_url;
+      if (!url) return <span className="text-muted-foreground">-</span>;
+      return (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+        >
+          PDF <ExternalLink className="size-3" />
+        </a>
       );
     },
   },
@@ -168,6 +264,9 @@ interface AssemblyData {
   line_item_count: number;
   total_quantity: number;
   created_at: string;
+  z2data_enrichment_status?: string;
+  z2data_enriched_count?: number;
+  z2data_total_enrichable?: number;
   bom_line_items: BomLineItemRow[];
 }
 
@@ -184,6 +283,12 @@ export default function AssemblyDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Z2Data enrichment state
+  const [enriching, setEnriching] = useState(false);
+  const [enrichProgress, setEnrichProgress] = useState({ enriched: 0, total: 0 });
+  const [enrichError, setEnrichError] = useState<string | null>(null);
+  const enrichAbort = useRef(false);
 
   useEffect(() => {
     getAssembly(id).then((result) => {
@@ -206,6 +311,36 @@ export default function AssemblyDetailPage({
       setDeleteOpen(false);
     }
   }, [id, router]);
+
+  // ---- Z2Data enrichment loop ----
+  const handleEnrich = useCallback(async () => {
+    setEnriching(true);
+    setEnrichError(null);
+    enrichAbort.current = false;
+
+    let done = false;
+    while (!done && !enrichAbort.current) {
+      const result = await enrichAssembly(id);
+      if (!result.success) {
+        setEnrichError(result.error ?? "Enrichment failed");
+        break;
+      }
+
+      const { status, enriched_total, enrichable_total } = result.data;
+      setEnrichProgress({ enriched: enriched_total, total: enrichable_total });
+
+      if (status === "done") {
+        done = true;
+      }
+    }
+
+    // Reload assembly to get updated BOM data
+    const refreshed = await getAssembly(id);
+    if (refreshed.success && refreshed.data) {
+      setAssembly(refreshed.data as AssemblyData);
+    }
+    setEnriching(false);
+  }, [id]);
 
   // ---- Derived data ----
 
@@ -257,6 +392,60 @@ export default function AssemblyDetailPage({
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
   }, [assembly]);
+
+  // ---- Z2Data insights data ----
+
+  const enrichedItems = useMemo(() => {
+    if (!assembly) return [];
+    return assembly.bom_line_items.filter((i) => i.z2data_enriched_at);
+  }, [assembly]);
+
+  const lifecycleDistribution = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of enrichedItems) {
+      const status = item.z2data_lifecycle_status || "Unknown";
+      counts[status] = (counts[status] || 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [enrichedItems]);
+
+  const complianceSummary = useMemo(() => {
+    let rohsCompliant = 0;
+    let rohsNonCompliant = 0;
+    let reachCompliant = 0;
+    let reachNonCompliant = 0;
+    for (const item of enrichedItems) {
+      if (item.z2data_rohs) {
+        if (item.z2data_rohs.toLowerCase() === "compliant") rohsCompliant++;
+        else rohsNonCompliant++;
+      }
+      if (item.z2data_reach) {
+        if (item.z2data_reach.toLowerCase() === "compliant") reachCompliant++;
+        else reachNonCompliant++;
+      }
+    }
+    return { rohsCompliant, rohsNonCompliant, reachCompliant, reachNonCompliant };
+  }, [enrichedItems]);
+
+  const riskCounts = useMemo(() => {
+    let eol = 0;
+    let obsolete = 0;
+    let nrnd = 0;
+    for (const item of enrichedItems) {
+      const s = (item.z2data_lifecycle_status || "").toLowerCase();
+      if (s === "obsolete") obsolete++;
+      else if (s === "eol" || s === "end of life") eol++;
+      else if (s === "nrnd" || s === "not recommended") nrnd++;
+    }
+    return { eol, obsolete, nrnd, atRisk: eol + obsolete + nrnd };
+  }, [enrichedItems]);
+
+  const hasEnrichment = enrichedItems.length > 0;
+  const isEnrichmentDone =
+    assembly?.z2data_enrichment_status === "completed" ||
+    assembly?.z2data_enrichment_status === "partial";
 
   // ---- Loading state ----
 
@@ -327,47 +516,106 @@ export default function AssemblyDetailPage({
             </div>
           </div>
 
-          {/* Delete button */}
-          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <DialogTrigger asChild>
+          {/* Action buttons */}
+          <div className="flex items-center gap-2">
+            {/* Enrich with Z2Data button — hidden once done */}
+            {isEnrichmentDone ? (
+              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1.5 py-1.5 px-3">
+                <CheckCircle2 className="size-3.5" />
+                Z2Data Enriched ({assembly.z2data_enriched_count}/{assembly.z2data_total_enrichable})
+              </Badge>
+            ) : (
               <Button
                 variant="outline"
-                className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="gap-2"
+                onClick={handleEnrich}
+                disabled={enriching}
               >
-                <Trash2 className="size-4" />
-                Delete
+                {enriching ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Zap className="size-4" />
+                )}
+                {enriching ? "Enriching..." : "Enrich with Z2Data"}
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Delete Assembly</DialogTitle>
-                <DialogDescription>
-                  This will permanently delete &quot;{assembly.name}&quot; and
-                  all {assembly.bom_line_items.length} BOM line items. This
-                  action cannot be undone.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
+            )}
+
+            {/* Delete button */}
+            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <DialogTrigger asChild>
                 <Button
                   variant="outline"
-                  onClick={() => setDeleteOpen(false)}
+                  className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
-                  Cancel
+                  <Trash2 className="size-4" />
+                  Delete
                 </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="gap-2"
-                >
-                  {deleting && <Loader2 className="size-4 animate-spin" />}
-                  {deleting ? "Deleting..." : "Delete Assembly"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete Assembly</DialogTitle>
+                  <DialogDescription>
+                    This will permanently delete &quot;{assembly.name}&quot; and
+                    all {assembly.bom_line_items.length} BOM line items. This
+                    action cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDeleteOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="gap-2"
+                  >
+                    {deleting && <Loader2 className="size-4 animate-spin" />}
+                    {deleting ? "Deleting..." : "Delete Assembly"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </div>
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Enrichment progress bar                                           */}
+      {/* ----------------------------------------------------------------- */}
+      {enriching && enrichProgress.total > 0 && (
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">
+                Enriching {enrichProgress.enriched}/{enrichProgress.total}...
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {Math.round(
+                  (enrichProgress.enriched / enrichProgress.total) * 100
+                )}
+                %
+              </span>
+            </div>
+            <Progress
+              value={
+                (enrichProgress.enriched / enrichProgress.total) * 100
+              }
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {enrichError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-3">
+            <p className="text-sm text-red-700">{enrichError}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ----------------------------------------------------------------- */}
       {/* 2. KPI cards                                                      */}
@@ -402,6 +650,9 @@ export default function AssemblyDetailPage({
         <TabsList>
           <TabsTrigger value="bom">BOM Lines</TabsTrigger>
           <TabsTrigger value="analysis">Analysis</TabsTrigger>
+          {hasEnrichment && (
+            <TabsTrigger value="z2data">Z2Data Insights</TabsTrigger>
+          )}
         </TabsList>
 
         {/* ---- BOM Lines Tab ---- */}
@@ -412,6 +663,9 @@ export default function AssemblyDetailPage({
               <CardDescription>
                 {assembly.bom_line_items.length} line items across{" "}
                 {sections.length} sections
+                {hasEnrichment && (
+                  <> &middot; {enrichedItems.length} enriched with Z2Data</>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -502,6 +756,214 @@ export default function AssemblyDetailPage({
             </ChartContainer>
           </div>
         </TabsContent>
+
+        {/* ---- Z2Data Insights Tab ---- */}
+        {hasEnrichment && (
+          <TabsContent value="z2data" className="space-y-4">
+            {/* Summary cards */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-blue-100 p-2">
+                      <Zap className="size-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Enriched</p>
+                      <p className="text-2xl font-bold">
+                        {enrichedItems.length}
+                        <span className="text-sm font-normal text-muted-foreground">
+                          /{assembly.bom_line_items.filter((i) => i.value?.trim()).length}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-red-100 p-2">
+                      <AlertCircle className="size-5 text-red-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">At Risk</p>
+                      <p className="text-2xl font-bold">{riskCounts.atRisk}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {riskCounts.obsolete} Obsolete, {riskCounts.eol} EOL, {riskCounts.nrnd} NRND
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-emerald-100 p-2">
+                      <CheckCircle2 className="size-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">RoHS Compliant</p>
+                      <p className="text-2xl font-bold">{complianceSummary.rohsCompliant}</p>
+                      {complianceSummary.rohsNonCompliant > 0 && (
+                        <p className="text-xs text-red-500">
+                          {complianceSummary.rohsNonCompliant} non-compliant
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-emerald-100 p-2">
+                      <CheckCircle2 className="size-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">REACH Compliant</p>
+                      <p className="text-2xl font-bold">{complianceSummary.reachCompliant}</p>
+                      {complianceSummary.reachNonCompliant > 0 && (
+                        <p className="text-xs text-red-500">
+                          {complianceSummary.reachNonCompliant} non-compliant
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Charts */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <ChartContainer
+                title="Lifecycle Distribution"
+                subtitle="Part lifecycle status breakdown"
+                height={300}
+              >
+                <PieChart>
+                  <Pie
+                    data={lifecycleDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={65}
+                    outerRadius={100}
+                    paddingAngle={3}
+                    dataKey="value"
+                    nameKey="name"
+                    label={({ name, value }) => `${name}: ${value}`}
+                  >
+                    {lifecycleDistribution.map((entry, index) => {
+                      const s = entry.name.toLowerCase();
+                      let fill = PIE_COLORS[index % PIE_COLORS.length];
+                      if (s === "active" || s === "production") fill = "#10b981";
+                      else if (s === "nrnd" || s === "not recommended")
+                        fill = "#f59e0b";
+                      else if (s === "eol" || s === "end of life")
+                        fill = "#f97316";
+                      else if (s === "obsolete") fill = "#ef4444";
+                      return (
+                        <Cell key={`lc-${entry.name}`} fill={fill} />
+                      );
+                    })}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ChartContainer>
+
+              <ChartContainer
+                title="Compliance Summary"
+                subtitle="RoHS and REACH compliance overview"
+                height={300}
+              >
+                <BarChart
+                  data={[
+                    {
+                      name: "RoHS",
+                      Compliant: complianceSummary.rohsCompliant,
+                      "Non-Compliant": complianceSummary.rohsNonCompliant,
+                    },
+                    {
+                      name: "REACH",
+                      Compliant: complianceSummary.reachCompliant,
+                      "Non-Compliant": complianceSummary.reachNonCompliant,
+                    },
+                  ]}
+                >
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                  />
+                  <Tooltip />
+                  <Legend />
+                  <Bar
+                    dataKey="Compliant"
+                    fill="#10b981"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="Non-Compliant"
+                    fill="#ef4444"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ChartContainer>
+            </div>
+
+            {/* Error list */}
+            {assembly.bom_line_items.some((i) => i.z2data_error) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <XCircle className="size-4 text-red-500" />
+                    Enrichment Errors
+                  </CardTitle>
+                  <CardDescription>
+                    These parts could not be found in Z2Data
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {assembly.bom_line_items
+                      .filter((i) => i.z2data_error)
+                      .map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                        >
+                          <span className="font-mono">{item.value}</span>
+                          <span className="text-muted-foreground">
+                            {item.z2data_error}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Enrichment status badge */}
+            {isEnrichmentDone && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CheckCircle2 className="size-4 text-emerald-500" />
+                Enrichment {assembly.z2data_enrichment_status} &middot;{" "}
+                {assembly.z2data_enriched_count}/{assembly.z2data_total_enrichable} parts
+              </div>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

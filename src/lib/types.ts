@@ -45,6 +45,9 @@ export interface Assembly {
   line_item_count: number;
   total_quantity: number;
   created_at: string;
+  z2data_enrichment_status: "none" | "in_progress" | "completed" | "partial";
+  z2data_enriched_count: number;
+  z2data_total_enrichable: number;
 }
 
 export interface BomLineItemRow {
@@ -60,6 +63,15 @@ export interface BomLineItemRow {
   supplier2_name: string | null;
   supplier2_order_number: string | null;
   created_at: string;
+  z2data_part_id: string | null;
+  z2data_manufacturer: string | null;
+  z2data_description: string | null;
+  z2data_lifecycle_status: string | null;
+  z2data_rohs: string | null;
+  z2data_reach: string | null;
+  z2data_datasheet_url: string | null;
+  z2data_enriched_at: string | null;
+  z2data_error: string | null;
 }
 
 export interface AssemblyPart {
