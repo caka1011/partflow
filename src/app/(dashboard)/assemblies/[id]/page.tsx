@@ -28,6 +28,7 @@ import {
   ExternalLink,
   CheckCircle2,
   XCircle,
+  Wrench,
 } from "lucide-react";
 
 import { KpiCard } from "@/components/layout/kpi-card";
@@ -63,6 +64,7 @@ import {
   deleteAssembly,
   enrichAssembly,
 } from "@/lib/actions/assemblies";
+import { ResolveDialog } from "@/components/assemblies/resolve-dialog";
 import type { BomLineItemRow } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -340,6 +342,16 @@ export default function AssemblyDetailPage({
       setAssembly(refreshed.data as AssemblyData);
     }
     setEnriching(false);
+  }, [id]);
+
+  // ---- Resolve failed items ----
+  const [resolveOpen, setResolveOpen] = useState(false);
+
+  const handlePartResolved = useCallback(async () => {
+    const refreshed = await getAssembly(id);
+    if (refreshed.success && refreshed.data) {
+      setAssembly(refreshed.data as AssemblyData);
+    }
   }, [id]);
 
   // ---- Derived data ----
@@ -925,14 +937,25 @@ export default function AssemblyDetailPage({
             {/* Error list */}
             {assembly.bom_line_items.some((i) => i.z2data_error) && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <XCircle className="size-4 text-red-500" />
-                    Enrichment Errors
-                  </CardTitle>
-                  <CardDescription>
-                    These parts could not be found in Z2Data
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <XCircle className="size-4 text-red-500" />
+                      Enrichment Errors
+                    </CardTitle>
+                    <CardDescription>
+                      These parts could not be found in Z2Data
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => setResolveOpen(true)}
+                  >
+                    <Wrench className="size-3.5" />
+                    Resolve {assembly.bom_line_items.filter((i) => i.z2data_error).length} Failed
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
@@ -965,6 +988,19 @@ export default function AssemblyDetailPage({
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Resolve failed parts dialog */}
+      {assembly && (
+        <ResolveDialog
+          open={resolveOpen}
+          onOpenChange={setResolveOpen}
+          assemblyId={id}
+          failedItems={assembly.bom_line_items.filter(
+            (i) => i.z2data_error !== null
+          )}
+          onResolved={handlePartResolved}
+        />
+      )}
     </div>
   );
 }

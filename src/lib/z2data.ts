@@ -13,7 +13,7 @@ function getApiKey(): string {
 
 // -- Part Search types (GET /GetPartDetailsBySearch) --
 
-interface PartSearchItem {
+export interface PartSearchItem {
   Datasheet: string;
   PartID: number;
   MPN: string;
@@ -123,6 +123,43 @@ export async function getPartDetails(
   return data.results ?? null;
 }
 
+/**
+ * Generate candidate search terms for an MPN using progressive shortening
+ * and character-stripping strategies.
+ */
+function generateMpnVariants(mpn: string): string[] {
+  const variants: string[] = [];
+
+  // 1. Strip special characters (dashes, dots, spaces, slashes)
+  const stripped = mpn.replace(/[-.\s/]/g, "");
+  if (stripped !== mpn && stripped.length > 0) {
+    variants.push(stripped);
+  }
+
+  // 2. Progressive shortening — remove 1-char at a time from the end,
+  //    down to a minimum of 5 characters (to avoid overly broad matches)
+  const minLen = Math.max(5, Math.floor(mpn.length * 0.5));
+  for (let len = mpn.length - 1; len >= minLen; len--) {
+    const shortened = mpn.slice(0, len);
+    if (!variants.includes(shortened)) {
+      variants.push(shortened);
+    }
+  }
+
+  // 3. Also try shortened versions of the stripped form
+  if (stripped !== mpn && stripped.length > 5) {
+    const strippedMin = Math.max(5, Math.floor(stripped.length * 0.5));
+    for (let len = stripped.length - 1; len >= strippedMin; len--) {
+      const shortened = stripped.slice(0, len);
+      if (!variants.includes(shortened)) {
+        variants.push(shortened);
+      }
+    }
+  }
+
+  return variants;
+}
+
 /** Enrich a single MPN — chains search + details, returns combined result */
 export async function enrichPart(mpn: string): Promise<Z2DataEnrichmentResult> {
   // Step 1: search by MPN
@@ -150,4 +187,65 @@ export async function enrichPart(mpn: string): Promise<Z2DataEnrichmentResult> {
     reach: details?.ComplianceDetails?.REACHStatus ?? "",
     datasheetUrl: details?.MPNSummary?.DataSheet ?? searchResult.Datasheet ?? "",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Candidate search — used by the manual resolution flow
+// ---------------------------------------------------------------------------
+
+/** Search Z2Data and return ALL matching parts (not just the first) */
+async function searchAllParts(query: string): Promise<PartSearchItem[]> {
+  const apiKey = getApiKey();
+  const url = `${BASE_URL}/GetPartDetailsBySearch?ApiKey=${encodeURIComponent(apiKey)}&Z2MPN=${encodeURIComponent(query)}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+  const data = await res.json();
+  if (data.statusCode === 401) {
+    throw new Error(`Z2Data auth failed: ${data.status}`);
+  }
+  if (data.statusCode !== 200) return [];
+  return data.results?.PartSearch?.Result ?? [];
+}
+
+/**
+ * Search Z2Data using multiple strategies and return all unique candidates.
+ * Strategies: exact MPN → stripped MPN → shortened variants → shorttext.
+ */
+export async function searchPartCandidates(
+  mpn: string,
+  shorttext?: string
+): Promise<PartSearchItem[]> {
+  const seen = new Set<number>();
+  const candidates: PartSearchItem[] = [];
+  const MAX_CANDIDATES = 20;
+
+  function addResults(items: PartSearchItem[]) {
+    for (const item of items) {
+      if (!seen.has(item.PartID)) {
+        seen.add(item.PartID);
+        candidates.push(item);
+      }
+    }
+  }
+
+  // Strategy 1: exact MPN (return all results)
+  addResults(await searchAllParts(mpn));
+  if (candidates.length >= MAX_CANDIDATES) return candidates.slice(0, MAX_CANDIDATES);
+
+  // Strategy 2: MPN variants (stripped chars + progressive shortening)
+  const variants = generateMpnVariants(mpn);
+  for (const variant of variants) {
+    addResults(await searchAllParts(variant));
+    if (candidates.length >= MAX_CANDIDATES) break;
+  }
+  if (candidates.length >= MAX_CANDIDATES) return candidates.slice(0, MAX_CANDIDATES);
+
+  // Strategy 3: search by shorttext (component description)
+  if (shorttext && shorttext.trim()) {
+    addResults(await searchAllParts(shorttext.trim()));
+  }
+
+  return candidates.slice(0, MAX_CANDIDATES);
 }

@@ -167,6 +167,15 @@ export interface Alert {
   created_at: string;
 }
 
+export interface PartCandidate {
+  PartID: number;
+  MPN: string;
+  Manufacturer: string;
+  Description: string;
+  Datasheet: string;
+  ProductType?: string;
+}
+
 export interface Alternative {
   id: string;
   original_part_id: string;

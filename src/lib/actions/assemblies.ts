@@ -109,6 +109,54 @@ export async function enrichAssembly(id: string) {
   }
 }
 
+export async function getPartCandidates(assemblyId: string, itemId: string) {
+  try {
+    const res = await fetch(
+      `/api/assemblies/${assemblyId}/bom-items/${itemId}/candidates`
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new Error(err.error ?? "Failed to fetch candidates");
+    }
+    const data = await res.json();
+    return { success: true as const, data: data.candidates };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : "Failed to fetch candidates",
+    };
+  }
+}
+
+export async function resolvePartItem(
+  assemblyId: string,
+  itemId: string,
+  partId: number,
+  fallback?: { manufacturer?: string; description?: string; datasheet?: string }
+) {
+  try {
+    const res = await fetch(
+      `/api/assemblies/${assemblyId}/bom-items/${itemId}/resolve`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partId, ...fallback }),
+      }
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new Error(err.error ?? "Failed to resolve part");
+    }
+    const data = await res.json();
+    return { success: true as const, data };
+  } catch (e) {
+    return {
+      success: false as const,
+      error: e instanceof Error ? e.message : "Failed to resolve part",
+    };
+  }
+}
+
 export async function deleteAssembly(id: string) {
   try {
     const res = await fetch(`/api/assemblies/${id}`, { method: "DELETE" });
