@@ -160,15 +160,35 @@ function generateMpnVariants(mpn: string): string[] {
   return variants;
 }
 
-/** Enrich a single MPN — chains search + details, returns combined result */
+/** Enrich a single MPN — chains search + details, returns combined result.
+ *  Tries exact MPN first, then stripped (no dashes/dots/spaces). If the
+ *  stripped search returns exactly one match it's used automatically.
+ *  Zero or multiple matches → throws so the item goes to manual resolution. */
 export async function enrichPart(mpn: string): Promise<Z2DataEnrichmentResult> {
-  // Step 1: search by MPN
-  const searchResult = await searchPart(mpn);
+  // Step 1: search by exact MPN
+  let searchResult = await searchPart(mpn);
+
+  // Step 2: if exact fails, try stripped version (remove dashes, dots, spaces, slashes)
+  if (!searchResult) {
+    const stripped = mpn.replace(/[-.\s/]/g, "");
+    if (stripped !== mpn && stripped.length > 0) {
+      const strippedResults = await searchAllParts(stripped);
+      if (strippedResults.length === 1) {
+        // Unambiguous match — use it
+        searchResult = strippedResults[0];
+      } else if (strippedResults.length > 1) {
+        throw new Error(
+          `Multiple Z2Data matches for MPN: ${mpn} (${strippedResults.length} results) — resolve manually`
+        );
+      }
+    }
+  }
+
   if (!searchResult) {
     throw new Error(`No Z2Data results for MPN: ${mpn}`);
   }
 
-  // Step 2: get full details by PartID
+  // Step 3: get full details by PartID
   let details: PartDetailsResponse["results"] | null = null;
   if (searchResult.PartID) {
     try {
