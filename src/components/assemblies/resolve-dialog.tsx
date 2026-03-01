@@ -61,7 +61,6 @@ export function ResolveDialog({
 
   const handleSelectItem = useCallback(
     async (itemId: string) => {
-      if (itemId === selectedItemId) return;
       setSelectedItemId(itemId);
       setCandidates([]);
       setCandidateError(null);
@@ -75,7 +74,7 @@ export function ResolveDialog({
         setCandidateError(result.error ?? "Search failed");
       }
     },
-    [assemblyId, selectedItemId]
+    [assemblyId]
   );
 
   const handleSelect = useCallback(
@@ -105,11 +104,7 @@ export function ResolveDialog({
           (item) => item.id !== selectedItemId && !newResolved.has(item.id)
         );
         if (nextItem) {
-          // Reset state and fetch candidates for next item
-          setSelectedItemId(null);
-          setCandidates([]);
-          // Trigger selection after state reset
-          setTimeout(() => handleSelectItem(nextItem.id), 0);
+          handleSelectItem(nextItem.id);
         } else {
           setSelectedItemId(null);
           setCandidates([]);
@@ -149,7 +144,7 @@ export function ResolveDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-1 gap-4 overflow-hidden min-h-0">
+        <div className="flex gap-4 overflow-hidden min-h-[400px] max-h-[60vh]">
           {/* LEFT: Failed items list */}
           <div className="w-64 flex-shrink-0 overflow-y-auto border-r pr-4 space-y-1">
             {failedItems
