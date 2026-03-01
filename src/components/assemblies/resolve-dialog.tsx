@@ -19,14 +19,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   getPartCandidates,
   resolvePartItem,
 } from "@/lib/actions/assemblies";
@@ -226,76 +218,58 @@ export function ResolveDialog({
             {selectedItemId &&
               !loadingCandidates &&
               candidates.length > 0 && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MPN</TableHead>
-                      <TableHead>Manufacturer</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Datasheet</TableHead>
-                      <TableHead className="w-20"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {candidates.map((candidate) => (
-                      <TableRow key={candidate.PartID}>
-                        <TableCell className="font-mono text-sm">
-                          {candidate.MPN}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {candidate.Manufacturer}
-                        </TableCell>
-                        <TableCell
-                          className="max-w-xs truncate text-sm"
-                          title={candidate.Description}
-                        >
-                          {candidate.Description}
-                        </TableCell>
-                        <TableCell>
-                          {candidate.ProductType ? (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs"
-                            >
-                              {candidate.ProductType}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {candidate.Datasheet ? (
+                <div className="space-y-2">
+                  {candidates.map((candidate) => (
+                    <div
+                      key={candidate.PartID}
+                      className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-medium text-sm">
+                            {candidate.MPN}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {candidate.Manufacturer}
+                          </span>
+                          {candidate.Datasheet && (
                             <a
                               href={candidate.Datasheet}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                              className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline"
                             >
                               PDF
                               <ExternalLink className="size-3" />
                             </a>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
                           )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            onClick={() => handleSelect(candidate)}
-                            disabled={resolvingId !== null}
-                            className="gap-1.5"
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {candidate.Description}
+                        </p>
+                        {candidate.ProductType && (
+                          <Badge
+                            variant="secondary"
+                            className="text-xs mt-1"
                           >
-                            {resolvingId === candidate.PartID && (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            )}
-                            Select
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                            {candidate.ProductType}
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => handleSelect(candidate)}
+                        disabled={resolvingId !== null}
+                        className="flex-shrink-0 gap-1.5"
+                      >
+                        {resolvingId === candidate.PartID && (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        )}
+                        Select
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               )}
           </div>
         </div>
