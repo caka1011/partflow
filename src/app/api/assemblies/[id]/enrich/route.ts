@@ -38,7 +38,7 @@ export async function POST(
 
     // 1. Fetch un-enriched items: no result yet AND no error yet (skip already-processed)
     const itemsRes = await fetch(
-      `${url}/rest/v1/bom_line_items?select=id,value&assembly_id=eq.${id}&value=neq.&z2data_enriched_at=is.null&z2data_error=is.null&limit=${BATCH_SIZE}`,
+      `${url}/rest/v1/bom_line_items?select=id,value,shorttext&assembly_id=eq.${id}&value=neq.&z2data_enriched_at=is.null&z2data_error=is.null&limit=${BATCH_SIZE}`,
       { method: "GET", headers }
     );
     if (!itemsRes.ok) {
@@ -48,7 +48,7 @@ export async function POST(
         { status: itemsRes.status }
       );
     }
-    const items: { id: string; value: string }[] = await itemsRes.json();
+    const items: { id: string; value: string; shorttext: string }[] = await itemsRes.json();
 
     // If no items left to process, mark assembly as done
     if (items.length === 0) {
@@ -101,7 +101,7 @@ export async function POST(
 
     for (const item of items) {
       try {
-        const result = await enrichPart(item.value.trim());
+        const result = await enrichPart(item.value.trim(), item.shorttext);
 
         await fetch(
           `${url}/rest/v1/bom_line_items?id=eq.${item.id}`,

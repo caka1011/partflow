@@ -160,28 +160,63 @@ function generateMpnVariants(mpn: string): string[] {
   return variants;
 }
 
+/**
+ * Helper: try a search query and return the result only if it's unambiguous (exactly 1 match).
+ * Returns the single match, or null if 0 results, or throws if multiple results.
+ */
+async function tryUnambiguousSearch(
+  query: string,
+  mpn: string,
+  strategyLabel: string
+): Promise<PartSearchItem | null> {
+  const results = await searchAllParts(query);
+  if (results.length === 1) return results[0];
+  if (results.length > 1) {
+    throw new Error(
+      `Multiple Z2Data matches for MPN: ${mpn} via ${strategyLabel} (${results.length} results) — resolve manually`
+    );
+  }
+  return null;
+}
+
 /** Enrich a single MPN — chains search + details, returns combined result.
- *  Tries exact MPN first, then stripped (no dashes/dots/spaces). If the
- *  stripped search returns exactly one match it's used automatically.
- *  Zero or multiple matches → throws so the item goes to manual resolution. */
-export async function enrichPart(mpn: string): Promise<Z2DataEnrichmentResult> {
-  // Step 1: search by exact MPN
+ *
+ *  Tries 4 strategies in order, auto-resolving only unambiguous (single) matches:
+ *    1. Exact MPN
+ *    2. Stripped MPN (no dashes, dots, spaces, slashes)
+ *    3. Shortened MPN (progressively trim from end, down to 50% length)
+ *    4. Shorttext / component description
+ *
+ *  Multiple matches → error → manual resolution dialog.
+ *  Zero matches after all strategies → error → manual resolution dialog. */
+export async function enrichPart(
+  mpn: string,
+  shorttext?: string
+): Promise<Z2DataEnrichmentResult> {
+  // Strategy 1: exact MPN
   let searchResult = await searchPart(mpn);
 
-  // Step 2: if exact fails, try stripped version (remove dashes, dots, spaces, slashes)
+  // Strategy 2: stripped (remove dashes, dots, spaces, slashes)
   if (!searchResult) {
     const stripped = mpn.replace(/[-.\s/]/g, "");
     if (stripped !== mpn && stripped.length > 0) {
-      const strippedResults = await searchAllParts(stripped);
-      if (strippedResults.length === 1) {
-        // Unambiguous match — use it
-        searchResult = strippedResults[0];
-      } else if (strippedResults.length > 1) {
-        throw new Error(
-          `Multiple Z2Data matches for MPN: ${mpn} (${strippedResults.length} results) — resolve manually`
-        );
-      }
+      searchResult = await tryUnambiguousSearch(stripped, mpn, "stripped");
     }
+  }
+
+  // Strategy 3: progressive shortening (trim from end, min 5 chars or 50% length)
+  if (!searchResult) {
+    const minLen = Math.max(5, Math.floor(mpn.length * 0.6));
+    for (let len = mpn.length - 1; len >= minLen; len--) {
+      const shortened = mpn.slice(0, len);
+      searchResult = await tryUnambiguousSearch(shortened, mpn, `shortened "${shortened}"`);
+      if (searchResult) break;
+    }
+  }
+
+  // Strategy 4: search by shorttext (component name/description)
+  if (!searchResult && shorttext && shorttext.trim()) {
+    searchResult = await tryUnambiguousSearch(shorttext.trim(), mpn, "shorttext");
   }
 
   if (!searchResult) {
