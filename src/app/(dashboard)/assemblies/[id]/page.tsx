@@ -323,11 +323,11 @@ function BomExpandedRow({ item }: { item: BomLineItemRow }) {
                   : null
               }
             />
-            {item.z2data_china_rohs && <DetailField label="China RoHS" value={item.z2data_china_rohs} />}
-            {item.z2data_tsca && <DetailField label="TSCA" value={item.z2data_tsca} />}
-            {item.z2data_ca_prop65 && <DetailField label="CA Prop 65" value={item.z2data_ca_prop65} />}
-            {item.z2data_scip_id && <DetailField label="SCIP ID" value={item.z2data_scip_id} />}
-            {item.z2data_lead_free_status && <DetailField label="Lead Free" value={item.z2data_lead_free_status} />}
+            <DetailField label="China RoHS" value={item.z2data_china_rohs} />
+            <DetailField label="TSCA" value={item.z2data_tsca} />
+            <DetailField label="CA Prop 65" value={item.z2data_ca_prop65} />
+            <DetailField label="SCIP ID" value={item.z2data_scip_id} />
+            <DetailField label="Lead Free" value={item.z2data_lead_free_status} />
           </dl>
         </div>
 
