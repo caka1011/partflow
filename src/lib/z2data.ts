@@ -53,6 +53,7 @@ interface PartDetailsResponse {
       LifecycleStatus: string;
       LifecycleSource: string;
       EstimatedYearsToEOL: number;
+      LCComment: string;
       ForecastedObsolescenceYear: number;
     };
     ComplianceDetails: {
@@ -62,7 +63,22 @@ interface PartDetailsResponse {
       REACHVersion: string;
       HalogenFreeStatus: string;
       LeadFreeStatus: string;
+      ChinaRoHS: string;
+      TSCA: string;
+      CAProp65: string;
+      SCIPID: string;
     };
+    ManufacturingLocations?: {
+      CountryofOrigin?: Array<{ CountryName: string; TrustLevel: string }>;
+      Locations?: Array<{
+        FacilityType: string;
+        CountryName: string;
+        CityName: string;
+        SiteOwner: string;
+        TrustLevel: string;
+      }>;
+    };
+    TradeCodes?: Array<{ Name: string; Value: string }>;
   };
 }
 
@@ -74,6 +90,23 @@ export interface Z2DataEnrichmentResult {
   rohs: string;
   reach: string;
   datasheetUrl: string;
+  // Extended lifecycle
+  lifecycleSource: string;
+  estimatedYearsToEOL: number | null;
+  lcComment: string;
+  forecastedObsolescenceYear: number | null;
+  // Extended compliance
+  rohsVersion: string;
+  reachVersion: string;
+  chinaRohs: string;
+  tsca: string;
+  caProp65: string;
+  scipId: string;
+  leadFreeStatus: string;
+  // Manufacturing & trade
+  countryOfOrigin: Array<{countryName: string; trustLevel: string}> | null;
+  manufacturingLocations: Array<{facilityType: string; countryName: string; cityName: string; siteOwner: string; trustLevel: string}> | null;
+  tradeCodes: Array<{name: string; value: string}> | null;
 }
 
 /** Search Z2Data by MPN — returns first matching part from PartSearch */
@@ -233,6 +266,28 @@ export async function enrichPart(
     }
   }
 
+  // Map manufacturing locations
+  const rawOrigin = details?.ManufacturingLocations?.CountryofOrigin;
+  const countryOfOrigin = rawOrigin?.length
+    ? rawOrigin.map((o) => ({ countryName: o.CountryName, trustLevel: o.TrustLevel }))
+    : null;
+
+  const rawLocations = details?.ManufacturingLocations?.Locations;
+  const manufacturingLocations = rawLocations?.length
+    ? rawLocations.map((l) => ({
+        facilityType: l.FacilityType,
+        countryName: l.CountryName,
+        cityName: l.CityName,
+        siteOwner: l.SiteOwner,
+        trustLevel: l.TrustLevel,
+      }))
+    : null;
+
+  const rawTrades = details?.TradeCodes;
+  const tradeCodes = rawTrades?.length
+    ? rawTrades.map((t) => ({ name: t.Name, value: t.Value }))
+    : null;
+
   return {
     partId: String(searchResult.PartID),
     manufacturer: details?.MPNSummary?.Supplier ?? searchResult.Manufacturer ?? "",
@@ -241,6 +296,23 @@ export async function enrichPart(
     rohs: details?.ComplianceDetails?.RoHSStatus ?? "",
     reach: details?.ComplianceDetails?.REACHStatus ?? "",
     datasheetUrl: details?.MPNSummary?.DataSheet ?? searchResult.Datasheet ?? "",
+    // Extended lifecycle
+    lifecycleSource: details?.Lifecycle?.LifecycleSource ?? "",
+    estimatedYearsToEOL: details?.Lifecycle?.EstimatedYearsToEOL ?? null,
+    lcComment: details?.Lifecycle?.LCComment ?? "",
+    forecastedObsolescenceYear: details?.Lifecycle?.ForecastedObsolescenceYear ?? null,
+    // Extended compliance
+    rohsVersion: details?.ComplianceDetails?.RoHSVersion ?? "",
+    reachVersion: details?.ComplianceDetails?.REACHVersion ?? "",
+    chinaRohs: details?.ComplianceDetails?.ChinaRoHS ?? "",
+    tsca: details?.ComplianceDetails?.TSCA ?? "",
+    caProp65: details?.ComplianceDetails?.CAProp65 ?? "",
+    scipId: details?.ComplianceDetails?.SCIPID ?? "",
+    leadFreeStatus: details?.ComplianceDetails?.LeadFreeStatus ?? "",
+    // Manufacturing & trade
+    countryOfOrigin,
+    manufacturingLocations,
+    tradeCodes,
   };
 }
 

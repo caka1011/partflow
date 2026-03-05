@@ -48,6 +48,9 @@ export interface Assembly {
   z2data_enrichment_status: "none" | "in_progress" | "completed" | "partial";
   z2data_enriched_count: number;
   z2data_total_enrichable: number;
+  digikey_enrichment_status: "none" | "in_progress" | "completed" | "partial";
+  digikey_enriched_count: number;
+  digikey_total_enrichable: number;
 }
 
 export interface BomLineItemRow {
@@ -72,6 +75,33 @@ export interface BomLineItemRow {
   z2data_datasheet_url: string | null;
   z2data_enriched_at: string | null;
   z2data_error: string | null;
+  // Z2Data extended lifecycle
+  z2data_lifecycle_source: string | null;
+  z2data_estimated_years_to_eol: number | null;
+  z2data_lc_comment: string | null;
+  z2data_forecasted_obsolescence_year: number | null;
+  // Z2Data extended compliance
+  z2data_rohs_version: string | null;
+  z2data_reach_version: string | null;
+  z2data_china_rohs: string | null;
+  z2data_tsca: string | null;
+  z2data_ca_prop65: string | null;
+  z2data_scip_id: string | null;
+  z2data_lead_free_status: string | null;
+  // Z2Data manufacturing & trade (JSONB)
+  z2data_country_of_origin: Array<{countryName: string; trustLevel: string}> | null;
+  z2data_manufacturing_locations: Array<{facilityType: string; countryName: string; cityName: string; siteOwner: string; trustLevel: string}> | null;
+  z2data_trade_codes: Array<{name: string; value: string}> | null;
+  // DigiKey pricing fields
+  digikey_part_number: string | null;
+  digikey_unit_price: number | null;
+  digikey_currency: string | null;
+  digikey_stock: number | null;
+  digikey_moq: number | null;
+  digikey_lead_weeks: string | null;
+  digikey_product_url: string | null;
+  digikey_enriched_at: string | null;
+  digikey_error: string | null;
 }
 
 export interface AssemblyPart {

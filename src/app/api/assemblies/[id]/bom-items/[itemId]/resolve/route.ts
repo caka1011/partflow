@@ -51,6 +51,28 @@ export async function POST(
       // If details fetch fails, fall back to data from the search result (passed in body)
     }
 
+    // Map manufacturing locations
+    const rawOrigin = details?.ManufacturingLocations?.CountryofOrigin;
+    const countryOfOrigin = rawOrigin?.length
+      ? rawOrigin.map((o: { CountryName: string; TrustLevel: string }) => ({ countryName: o.CountryName, trustLevel: o.TrustLevel }))
+      : null;
+
+    const rawLocations = details?.ManufacturingLocations?.Locations;
+    const manufacturingLocations = rawLocations?.length
+      ? rawLocations.map((l: { FacilityType: string; CountryName: string; CityName: string; SiteOwner: string; TrustLevel: string }) => ({
+          facilityType: l.FacilityType,
+          countryName: l.CountryName,
+          cityName: l.CityName,
+          siteOwner: l.SiteOwner,
+          trustLevel: l.TrustLevel,
+        }))
+      : null;
+
+    const rawTrades = details?.TradeCodes;
+    const tradeCodes = rawTrades?.length
+      ? rawTrades.map((t: { Name: string; Value: string }) => ({ name: t.Name, value: t.Value }))
+      : null;
+
     // Build the enrichment payload — prefer Z2Data details, fall back to search result data
     const patch = {
       z2data_part_id: String(partId),
@@ -64,6 +86,20 @@ export async function POST(
       z2data_reach: details?.ComplianceDetails?.REACHStatus ?? "",
       z2data_datasheet_url:
         details?.MPNSummary?.DataSheet ?? datasheet ?? "",
+      z2data_lifecycle_source: details?.Lifecycle?.LifecycleSource ?? "",
+      z2data_estimated_years_to_eol: details?.Lifecycle?.EstimatedYearsToEOL ?? null,
+      z2data_lc_comment: details?.Lifecycle?.LCComment ?? "",
+      z2data_forecasted_obsolescence_year: details?.Lifecycle?.ForecastedObsolescenceYear ?? null,
+      z2data_rohs_version: details?.ComplianceDetails?.RoHSVersion ?? "",
+      z2data_reach_version: details?.ComplianceDetails?.REACHVersion ?? "",
+      z2data_china_rohs: details?.ComplianceDetails?.ChinaRoHS ?? "",
+      z2data_tsca: details?.ComplianceDetails?.TSCA ?? "",
+      z2data_ca_prop65: details?.ComplianceDetails?.CAProp65 ?? "",
+      z2data_scip_id: details?.ComplianceDetails?.SCIPID ?? "",
+      z2data_lead_free_status: details?.ComplianceDetails?.LeadFreeStatus ?? "",
+      z2data_country_of_origin: countryOfOrigin,
+      z2data_manufacturing_locations: manufacturingLocations,
+      z2data_trade_codes: tradeCodes,
       z2data_enriched_at: new Date().toISOString(),
       z2data_error: null,
     };

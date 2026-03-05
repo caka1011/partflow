@@ -29,6 +29,10 @@ import {
   CheckCircle2,
   XCircle,
   Wrench,
+  DollarSign,
+  ShoppingCart,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 
 import { KpiCard } from "@/components/layout/kpi-card";
@@ -63,6 +67,7 @@ import {
   getAssembly,
   deleteAssembly,
   enrichAssembly,
+  fetchPricing,
 } from "@/lib/actions/assemblies";
 import { ResolveDialog } from "@/components/assemblies/resolve-dialog";
 import type { BomLineItemRow } from "@/lib/types";
@@ -105,24 +110,30 @@ function LifecycleBadge({ status }: { status: string | null }) {
 }
 
 // ---------------------------------------------------------------------------
-// BOM line item table columns (with Z2Data enrichment)
+// BOM line item table columns (slim — details in expandable row)
 // ---------------------------------------------------------------------------
 
 const bomColumns: ColumnDef<BomLineItemRow>[] = [
+  {
+    id: "expand",
+    header: "",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">
+        {row.getIsExpanded() ? (
+          <ChevronDown className="size-4" />
+        ) : (
+          <ChevronRight className="size-4" />
+        )}
+      </span>
+    ),
+    size: 32,
+    enableSorting: false,
+  },
   {
     accessorKey: "line_number",
     header: "#",
     cell: ({ row }) => (
       <span className="text-muted-foreground">{row.original.line_number}</span>
-    ),
-  },
-  {
-    accessorKey: "section",
-    header: "Section",
-    cell: ({ row }) => (
-      <Badge className="bg-slate-100 text-slate-600 border-slate-200">
-        {row.original.section}
-      </Badge>
     ),
   },
   {
@@ -166,93 +177,260 @@ const bomColumns: ColumnDef<BomLineItemRow>[] = [
     },
   },
   {
-    id: "compliance",
-    header: "Compliance",
+    id: "rohs",
+    header: "RoHS",
     cell: ({ row }) => {
       const rohs = row.original.z2data_rohs;
-      const reach = row.original.z2data_reach;
-      if (!rohs && !reach) return <span className="text-muted-foreground">-</span>;
+      if (!rohs) return <span className="text-muted-foreground">-</span>;
       return (
-        <div className="flex flex-wrap gap-1">
-          {rohs && (
-            <Badge
-              className={
-                rohs.toLowerCase() === "compliant"
-                  ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                  : "bg-amber-100 text-amber-700 border-amber-200"
-              }
-            >
-              RoHS: {rohs}
-            </Badge>
-          )}
-          {reach && (
-            <Badge
-              className={
-                reach.toLowerCase() === "compliant"
-                  ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                  : "bg-amber-100 text-amber-700 border-amber-200"
-              }
-            >
-              REACH: {reach}
-            </Badge>
-          )}
-        </div>
-      );
-    },
-  },
-  {
-    id: "datasheet",
-    header: "Datasheet",
-    cell: ({ row }) => {
-      const url = row.original.z2data_datasheet_url;
-      if (!url) return <span className="text-muted-foreground">-</span>;
-      return (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+        <Badge
+          className={
+            rohs.toLowerCase() === "compliant"
+              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+              : "bg-amber-100 text-amber-700 border-amber-200"
+          }
         >
-          PDF <ExternalLink className="size-3" />
-        </a>
+          {rohs}
+        </Badge>
       );
     },
   },
   {
-    id: "supplier1",
-    header: "Supplier 1",
+    id: "price",
+    header: "Price",
     cell: ({ row }) => {
-      const name = row.original.supplier1_name;
-      const order = row.original.supplier1_order_number;
-      if (!name) return <span className="text-muted-foreground">-</span>;
+      const price = row.original.digikey_unit_price;
+      const currency = row.original.digikey_currency;
+      if (row.original.digikey_error) {
+        return (
+          <span className="text-xs text-red-500" title={row.original.digikey_error}>
+            N/A
+          </span>
+        );
+      }
+      if (price == null) return <span className="text-muted-foreground">-</span>;
       return (
-        <div>
-          <p className="text-sm font-medium">{name}</p>
-          {order && (
-            <p className="font-mono text-xs text-muted-foreground">{order}</p>
-          )}
-        </div>
+        <span className="font-medium text-sm">
+          {price.toFixed(4)} {currency ?? "EUR"}
+        </span>
       );
     },
   },
   {
-    id: "supplier2",
-    header: "Supplier 2",
+    id: "stock",
+    header: "Stock",
     cell: ({ row }) => {
-      const name = row.original.supplier2_name;
-      const order = row.original.supplier2_order_number;
-      if (!name) return <span className="text-muted-foreground">-</span>;
+      const stock = row.original.digikey_stock;
+      if (stock == null) return <span className="text-muted-foreground">-</span>;
       return (
-        <div>
-          <p className="text-sm font-medium">{name}</p>
-          {order && (
-            <p className="font-mono text-xs text-muted-foreground">{order}</p>
-          )}
-        </div>
+        <span
+          className={
+            stock === 0
+              ? "text-red-600 font-medium text-sm"
+              : "text-emerald-600 font-medium text-sm"
+          }
+        >
+          {stock.toLocaleString()}
+        </span>
       );
     },
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Expanded row detail panel
+// ---------------------------------------------------------------------------
+
+function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm">{value || <span className="text-muted-foreground">-</span>}</dd>
+    </div>
+  );
+}
+
+function BomExpandedRow({ item }: { item: BomLineItemRow }) {
+  return (
+    <div className="grid grid-cols-1 gap-6 p-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Lifecycle */}
+      <div>
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Lifecycle
+        </h4>
+        <dl className="space-y-2">
+          <DetailField label="Status" value={<LifecycleBadge status={item.z2data_lifecycle_status} />} />
+          <DetailField label="Source" value={item.z2data_lifecycle_source} />
+          <DetailField
+            label="Est. Years to EOL"
+            value={item.z2data_estimated_years_to_eol != null ? String(item.z2data_estimated_years_to_eol) : null}
+          />
+          <DetailField
+            label="Forecasted Obsolescence"
+            value={item.z2data_forecasted_obsolescence_year != null ? String(item.z2data_forecasted_obsolescence_year) : null}
+          />
+          <DetailField label="Comment" value={item.z2data_lc_comment} />
+        </dl>
+      </div>
+
+      {/* Compliance */}
+      <div>
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Compliance
+        </h4>
+        <dl className="space-y-2">
+          <DetailField
+            label="RoHS"
+            value={
+              item.z2data_rohs
+                ? `${item.z2data_rohs}${item.z2data_rohs_version ? ` (${item.z2data_rohs_version})` : ""}`
+                : null
+            }
+          />
+          <DetailField
+            label="REACH"
+            value={
+              item.z2data_reach
+                ? `${item.z2data_reach}${item.z2data_reach_version ? ` (${item.z2data_reach_version})` : ""}`
+                : null
+            }
+          />
+          <DetailField label="China RoHS" value={item.z2data_china_rohs} />
+          <DetailField label="TSCA" value={item.z2data_tsca} />
+          <DetailField label="CA Prop 65" value={item.z2data_ca_prop65} />
+          <DetailField label="SCIP ID" value={item.z2data_scip_id} />
+          <DetailField label="Lead Free" value={item.z2data_lead_free_status} />
+        </dl>
+      </div>
+
+      {/* Manufacturing */}
+      <div>
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Manufacturing
+        </h4>
+        <dl className="space-y-2">
+          <DetailField label="Manufacturer" value={item.z2data_manufacturer} />
+          <DetailField label="Section" value={item.section} />
+          {item.z2data_country_of_origin?.length ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Country of Origin</dt>
+              <dd className="text-sm">
+                {item.z2data_country_of_origin.map((c, i) => (
+                  <span key={i}>
+                    {i > 0 && ", "}
+                    {c.countryName}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          ) : (
+            <DetailField label="Country of Origin" value={null} />
+          )}
+          {item.z2data_manufacturing_locations?.length ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Facilities</dt>
+              <dd className="space-y-1 text-sm">
+                {item.z2data_manufacturing_locations.map((loc, i) => (
+                  <div key={i} className="text-xs">
+                    {loc.facilityType} — {loc.cityName}, {loc.countryName}
+                    {loc.siteOwner && ` (${loc.siteOwner})`}
+                  </div>
+                ))}
+              </dd>
+            </div>
+          ) : (
+            <DetailField label="Facilities" value={null} />
+          )}
+        </dl>
+      </div>
+
+      {/* Trade & Sourcing */}
+      <div>
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Trade & Sourcing
+        </h4>
+        <dl className="space-y-2">
+          {item.z2data_trade_codes?.length ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Trade Codes</dt>
+              <dd className="space-y-0.5 text-sm">
+                {item.z2data_trade_codes.map((tc, i) => (
+                  <div key={i} className="text-xs">
+                    <span className="font-medium">{tc.name}:</span> {tc.value}
+                  </div>
+                ))}
+              </dd>
+            </div>
+          ) : (
+            <DetailField label="Trade Codes" value={null} />
+          )}
+          <DetailField
+            label="Datasheet"
+            value={
+              item.z2data_datasheet_url ? (
+                <a
+                  href={item.z2data_datasheet_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  PDF <ExternalLink className="size-3" />
+                </a>
+              ) : null
+            }
+          />
+          <DetailField
+            label="DigiKey"
+            value={
+              item.digikey_product_url ? (
+                <a
+                  href={item.digikey_product_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Buy <ExternalLink className="size-3" />
+                </a>
+              ) : null
+            }
+          />
+          {item.supplier1_name && (
+            <DetailField
+              label="Supplier 1"
+              value={
+                <span>
+                  {item.supplier1_name}
+                  {item.supplier1_order_number && (
+                    <span className="ml-1 font-mono text-xs text-muted-foreground">
+                      ({item.supplier1_order_number})
+                    </span>
+                  )}
+                </span>
+              }
+            />
+          )}
+          {item.supplier2_name && (
+            <DetailField
+              label="Supplier 2"
+              value={
+                <span>
+                  {item.supplier2_name}
+                  {item.supplier2_order_number && (
+                    <span className="ml-1 font-mono text-xs text-muted-foreground">
+                      ({item.supplier2_order_number})
+                    </span>
+                  )}
+                </span>
+              }
+            />
+          )}
+        </dl>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Page component
@@ -269,6 +447,9 @@ interface AssemblyData {
   z2data_enrichment_status?: string;
   z2data_enriched_count?: number;
   z2data_total_enrichable?: number;
+  digikey_enrichment_status?: string;
+  digikey_enriched_count?: number;
+  digikey_total_enrichable?: number;
   bom_line_items: BomLineItemRow[];
 }
 
@@ -291,6 +472,22 @@ export default function AssemblyDetailPage({
   const [enrichProgress, setEnrichProgress] = useState({ enriched: 0, total: 0 });
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const enrichAbort = useRef(false);
+
+  // DigiKey pricing state
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [pricingProgress, setPricingProgress] = useState({ enriched: 0, total: 0 });
+  const [pricingError, setPricingError] = useState<string | null>(null);
+  const pricingAbort = useRef(false);
+
+  // DigiKey authorization state
+  const [digikeyAuthorized, setDigikeyAuthorized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/digikey/status")
+      .then((r) => r.json())
+      .then((d) => setDigikeyAuthorized(d.authorized))
+      .catch(() => setDigikeyAuthorized(false));
+  }, []);
 
   useEffect(() => {
     getAssembly(id).then((result) => {
@@ -346,6 +543,36 @@ export default function AssemblyDetailPage({
 
   // ---- Resolve failed items ----
   const [resolveOpen, setResolveOpen] = useState(false);
+
+  // ---- DigiKey pricing loop ----
+  const handleFetchPricing = useCallback(async () => {
+    setPricingLoading(true);
+    setPricingError(null);
+    pricingAbort.current = false;
+
+    let done = false;
+    while (!done && !pricingAbort.current) {
+      const result = await fetchPricing(id);
+      if (!result.success) {
+        setPricingError(result.error ?? "Pricing fetch failed");
+        break;
+      }
+
+      const { status, enriched_total, enrichable_total } = result.data;
+      setPricingProgress({ enriched: enriched_total, total: enrichable_total });
+
+      if (status === "done") {
+        done = true;
+      }
+    }
+
+    // Reload assembly to get updated BOM data
+    const refreshed = await getAssembly(id);
+    if (refreshed.success && refreshed.data) {
+      setAssembly(refreshed.data as AssemblyData);
+    }
+    setPricingLoading(false);
+  }, [id]);
 
   const handlePartResolved = useCallback(async () => {
     const refreshed = await getAssembly(id);
@@ -459,6 +686,31 @@ export default function AssemblyDetailPage({
     assembly?.z2data_enrichment_status === "completed" ||
     assembly?.z2data_enrichment_status === "partial";
 
+  const isPricingDone =
+    assembly?.digikey_enrichment_status === "completed" ||
+    assembly?.digikey_enrichment_status === "partial";
+
+  const pricedItems = useMemo(() => {
+    if (!assembly) return [];
+    return assembly.bom_line_items.filter((i) => i.digikey_enriched_at);
+  }, [assembly]);
+
+  const hasPricing = pricedItems.length > 0;
+
+  const pricingSummary = useMemo(() => {
+    let totalBomCost = 0;
+    let pricedCount = 0;
+    let outOfStockCount = 0;
+    for (const item of pricedItems) {
+      if (item.digikey_unit_price != null) {
+        totalBomCost += item.digikey_unit_price * item.quantity;
+        pricedCount++;
+      }
+      if (item.digikey_stock === 0) outOfStockCount++;
+    }
+    return { totalBomCost, pricedCount, outOfStockCount };
+  }, [pricedItems]);
+
   // ---- Loading state ----
 
   if (loading) {
@@ -552,6 +804,41 @@ export default function AssemblyDetailPage({
               </Button>
             )}
 
+            {/* Fetch DigiKey Pricing button — show after Z2Data done */}
+            {isEnrichmentDone && (
+              isPricingDone ? (
+                <Badge className="bg-blue-100 text-blue-700 border-blue-200 gap-1.5 py-1.5 px-3">
+                  <DollarSign className="size-3.5" />
+                  DigiKey Priced ({assembly.digikey_enriched_count}/{assembly.digikey_total_enrichable})
+                </Badge>
+              ) : digikeyAuthorized === false ? (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  asChild
+                >
+                  <a href="/api/auth/digikey">
+                    <ShoppingCart className="size-4" />
+                    Connect DigiKey Account
+                  </a>
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={handleFetchPricing}
+                  disabled={pricingLoading || enriching || digikeyAuthorized === null}
+                >
+                  {pricingLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ShoppingCart className="size-4" />
+                  )}
+                  {pricingLoading ? "Fetching Prices..." : "Fetch DigiKey Pricing"}
+                </Button>
+              )
+            )}
+
             {/* Delete button */}
             <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
               <DialogTrigger asChild>
@@ -629,6 +916,38 @@ export default function AssemblyDetailPage({
         </Card>
       )}
 
+      {/* DigiKey pricing progress bar */}
+      {pricingLoading && pricingProgress.total > 0 && (
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">
+                Fetching DigiKey prices {pricingProgress.enriched}/{pricingProgress.total}...
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {Math.round(
+                  (pricingProgress.enriched / pricingProgress.total) * 100
+                )}
+                %
+              </span>
+            </div>
+            <Progress
+              value={
+                (pricingProgress.enriched / pricingProgress.total) * 100
+              }
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {pricingError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-3">
+            <p className="text-sm text-red-700">{pricingError}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ----------------------------------------------------------------- */}
       {/* 2. KPI cards                                                      */}
       {/* ----------------------------------------------------------------- */}
@@ -665,6 +984,9 @@ export default function AssemblyDetailPage({
           {hasEnrichment && (
             <TabsTrigger value="z2data">Z2Data Insights</TabsTrigger>
           )}
+          {hasPricing && (
+            <TabsTrigger value="pricing">DigiKey Pricing</TabsTrigger>
+          )}
         </TabsList>
 
         {/* ---- BOM Lines Tab ---- */}
@@ -686,6 +1008,7 @@ export default function AssemblyDetailPage({
                 data={assembly.bom_line_items}
                 searchKey="shorttext"
                 searchPlaceholder="Search components..."
+                renderExpandedRow={(item) => <BomExpandedRow item={item} />}
               />
             </CardContent>
           </Card>
@@ -983,6 +1306,174 @@ export default function AssemblyDetailPage({
                 <CheckCircle2 className="size-4 text-emerald-500" />
                 Enrichment {assembly.z2data_enrichment_status} &middot;{" "}
                 {assembly.z2data_enriched_count}/{assembly.z2data_total_enrichable} parts
+              </div>
+            )}
+          </TabsContent>
+        )}
+        {/* ---- DigiKey Pricing Tab ---- */}
+        {hasPricing && (
+          <TabsContent value="pricing" className="space-y-4">
+            {/* Summary cards */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-blue-100 p-2">
+                      <DollarSign className="size-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total BOM Cost</p>
+                      <p className="text-2xl font-bold">
+                        {pricingSummary.totalBomCost.toFixed(2)} EUR
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Based on unit price x quantity
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-emerald-100 p-2">
+                      <CheckCircle2 className="size-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Parts Priced</p>
+                      <p className="text-2xl font-bold">
+                        {pricingSummary.pricedCount}
+                        <span className="text-sm font-normal text-muted-foreground">
+                          /{enrichedItems.length}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-red-100 p-2">
+                      <AlertCircle className="size-5 text-red-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Out of Stock</p>
+                      <p className="text-2xl font-bold">{pricingSummary.outOfStockCount}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-amber-100 p-2">
+                      <ShoppingCart className="size-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Pricing Errors</p>
+                      <p className="text-2xl font-bold">
+                        {assembly.bom_line_items.filter((i) => i.digikey_error).length}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Priced items list */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">DigiKey Pricing Details</CardTitle>
+                <CardDescription>
+                  {pricedItems.length} parts with pricing data from DigiKey
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="pb-2 pr-4 font-medium">MPN</th>
+                        <th className="pb-2 pr-4 font-medium">DigiKey P/N</th>
+                        <th className="pb-2 pr-4 font-medium text-right">Unit Price</th>
+                        <th className="pb-2 pr-4 font-medium text-right">Qty</th>
+                        <th className="pb-2 pr-4 font-medium text-right">Line Cost</th>
+                        <th className="pb-2 pr-4 font-medium text-right">Stock</th>
+                        <th className="pb-2 pr-4 font-medium text-right">MOQ</th>
+                        <th className="pb-2 font-medium">Link</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pricedItems.map((item) => (
+                        <tr key={item.id} className="border-b last:border-0">
+                          <td className="py-2 pr-4 font-mono">{item.value}</td>
+                          <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">
+                            {item.digikey_part_number ?? "-"}
+                          </td>
+                          <td className="py-2 pr-4 text-right font-medium">
+                            {item.digikey_unit_price != null
+                              ? `${item.digikey_unit_price.toFixed(4)} EUR`
+                              : "-"}
+                          </td>
+                          <td className="py-2 pr-4 text-right">{item.quantity}</td>
+                          <td className="py-2 pr-4 text-right font-medium">
+                            {item.digikey_unit_price != null
+                              ? `${(item.digikey_unit_price * item.quantity).toFixed(2)} EUR`
+                              : "-"}
+                          </td>
+                          <td className="py-2 pr-4 text-right">
+                            <span
+                              className={
+                                item.digikey_stock === 0
+                                  ? "text-red-600 font-medium"
+                                  : "text-emerald-600"
+                              }
+                            >
+                              {item.digikey_stock?.toLocaleString() ?? "-"}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-4 text-right">{item.digikey_moq ?? "-"}</td>
+                          <td className="py-2">
+                            {item.digikey_product_url ? (
+                              <a
+                                href={item.digikey_product_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                              >
+                                Buy <ExternalLink className="size-3" />
+                              </a>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 font-bold">
+                        <td className="pt-2" colSpan={4}>Total BOM Cost</td>
+                        <td className="pt-2 text-right">
+                          {pricingSummary.totalBomCost.toFixed(2)} EUR
+                        </td>
+                        <td colSpan={3}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Pricing status badge */}
+            {isPricingDone && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CheckCircle2 className="size-4 text-blue-500" />
+                DigiKey pricing {assembly.digikey_enrichment_status} &middot;{" "}
+                {assembly.digikey_enriched_count}/{assembly.digikey_total_enrichable} parts
               </div>
             )}
           </TabsContent>
