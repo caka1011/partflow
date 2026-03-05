@@ -243,191 +243,185 @@ const bomColumns: ColumnDef<BomLineItemRow>[] = [
 
 function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-sm">{value || <span className="text-muted-foreground">-</span>}</dd>
+      <dd className="truncate text-sm" title={typeof value === "string" ? value : undefined}>
+        {value || <span className="text-muted-foreground">-</span>}
+      </dd>
     </div>
   );
 }
 
 function BomExpandedRow({ item }: { item: BomLineItemRow }) {
   return (
-    <div className="grid grid-cols-1 gap-6 p-4 md:grid-cols-2 lg:grid-cols-4">
-      {/* Lifecycle */}
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Lifecycle
-        </h4>
-        <dl className="space-y-2">
-          <DetailField label="Status" value={<LifecycleBadge status={item.z2data_lifecycle_status} />} />
-          <DetailField label="Source" value={item.z2data_lifecycle_source} />
-          <DetailField
-            label="Est. Years to EOL"
-            value={item.z2data_estimated_years_to_eol != null ? String(item.z2data_estimated_years_to_eol) : null}
-          />
-          <DetailField
-            label="Forecasted Obsolescence"
-            value={item.z2data_forecasted_obsolescence_year != null ? String(item.z2data_forecasted_obsolescence_year) : null}
-          />
-          <DetailField label="Comment" value={item.z2data_lc_comment} />
-        </dl>
-      </div>
-
-      {/* Compliance */}
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Compliance
-        </h4>
-        <dl className="space-y-2">
-          <DetailField
-            label="RoHS"
-            value={
-              item.z2data_rohs
-                ? `${item.z2data_rohs}${item.z2data_rohs_version ? ` (${item.z2data_rohs_version})` : ""}`
-                : null
-            }
-          />
-          <DetailField
-            label="REACH"
-            value={
-              item.z2data_reach
-                ? `${item.z2data_reach}${item.z2data_reach_version ? ` (${item.z2data_reach_version})` : ""}`
-                : null
-            }
-          />
-          <DetailField label="China RoHS" value={item.z2data_china_rohs} />
-          <DetailField label="TSCA" value={item.z2data_tsca} />
-          <DetailField label="CA Prop 65" value={item.z2data_ca_prop65} />
-          <DetailField label="SCIP ID" value={item.z2data_scip_id} />
-          <DetailField label="Lead Free" value={item.z2data_lead_free_status} />
-        </dl>
-      </div>
-
-      {/* Manufacturing */}
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Manufacturing
-        </h4>
-        <dl className="space-y-2">
-          <DetailField label="Manufacturer" value={item.z2data_manufacturer} />
-          <DetailField label="Section" value={item.section} />
-          {item.z2data_country_of_origin?.length ? (
-            <div>
-              <dt className="text-xs text-muted-foreground">Country of Origin</dt>
-              <dd className="text-sm">
-                {item.z2data_country_of_origin.map((c, i) => (
-                  <span key={i}>
-                    {i > 0 && ", "}
-                    {c.countryName}
-                  </span>
-                ))}
-              </dd>
-            </div>
-          ) : (
-            <DetailField label="Country of Origin" value={null} />
-          )}
-          {item.z2data_manufacturing_locations?.length ? (
-            <div>
-              <dt className="text-xs text-muted-foreground">Facilities</dt>
-              <dd className="space-y-1 text-sm">
-                {item.z2data_manufacturing_locations.map((loc, i) => (
-                  <div key={i} className="text-xs">
-                    {loc.facilityType} — {loc.cityName}, {loc.countryName}
-                    {loc.siteOwner && ` (${loc.siteOwner})`}
-                  </div>
-                ))}
-              </dd>
-            </div>
-          ) : (
-            <DetailField label="Facilities" value={null} />
-          )}
-        </dl>
-      </div>
-
-      {/* Trade & Sourcing */}
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Trade & Sourcing
-        </h4>
-        <dl className="space-y-2">
-          {item.z2data_trade_codes?.length ? (
-            <div>
-              <dt className="text-xs text-muted-foreground">Trade Codes</dt>
-              <dd className="space-y-0.5 text-sm">
-                {item.z2data_trade_codes.map((tc, i) => (
-                  <div key={i} className="text-xs">
-                    <span className="font-medium">{tc.name}:</span> {tc.value}
-                  </div>
-                ))}
-              </dd>
-            </div>
-          ) : (
-            <DetailField label="Trade Codes" value={null} />
-          )}
+    <div className="space-y-4 p-4">
+      {/* Row 1: Key info in a compact horizontal strip */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+        <DetailField label="Manufacturer" value={item.z2data_manufacturer} />
+        <DetailField label="Lifecycle" value={<LifecycleBadge status={item.z2data_lifecycle_status} />} />
+        {item.z2data_estimated_years_to_eol != null && (
+          <DetailField label="Est. Years to EOL" value={String(item.z2data_estimated_years_to_eol)} />
+        )}
+        {item.z2data_forecasted_obsolescence_year != null && (
+          <DetailField label="Obsolescence" value={String(item.z2data_forecasted_obsolescence_year)} />
+        )}
+        {item.z2data_datasheet_url && (
           <DetailField
             label="Datasheet"
             value={
-              item.z2data_datasheet_url ? (
-                <a
-                  href={item.z2data_datasheet_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  PDF <ExternalLink className="size-3" />
-                </a>
-              ) : null
+              <a
+                href={item.z2data_datasheet_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                PDF <ExternalLink className="size-3" />
+              </a>
             }
           />
+        )}
+        {item.digikey_product_url && (
           <DetailField
             label="DigiKey"
             value={
-              item.digikey_product_url ? (
-                <a
-                  href={item.digikey_product_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Buy <ExternalLink className="size-3" />
-                </a>
-              ) : null
+              <a
+                href={item.digikey_product_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Buy <ExternalLink className="size-3" />
+              </a>
             }
           />
-          {item.supplier1_name && (
-            <DetailField
-              label="Supplier 1"
-              value={
-                <span>
-                  {item.supplier1_name}
-                  {item.supplier1_order_number && (
-                    <span className="ml-1 font-mono text-xs text-muted-foreground">
-                      ({item.supplier1_order_number})
-                    </span>
-                  )}
-                </span>
-              }
-            />
-          )}
-          {item.supplier2_name && (
-            <DetailField
-              label="Supplier 2"
-              value={
-                <span>
-                  {item.supplier2_name}
-                  {item.supplier2_order_number && (
-                    <span className="ml-1 font-mono text-xs text-muted-foreground">
-                      ({item.supplier2_order_number})
-                    </span>
-                  )}
-                </span>
-              }
-            />
-          )}
-        </dl>
+        )}
       </div>
+
+      {/* Row 2: Detail sections in a 3-column grid */}
+      <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-3">
+        {/* Compliance */}
+        <div className="min-w-0">
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Compliance
+          </h4>
+          <dl className="space-y-1.5">
+            <DetailField
+              label="RoHS"
+              value={
+                item.z2data_rohs
+                  ? `${item.z2data_rohs}${item.z2data_rohs_version ? ` (${item.z2data_rohs_version})` : ""}`
+                  : null
+              }
+            />
+            <DetailField
+              label="REACH"
+              value={
+                item.z2data_reach
+                  ? `${item.z2data_reach}${item.z2data_reach_version ? ` (${item.z2data_reach_version})` : ""}`
+                  : null
+              }
+            />
+            {item.z2data_china_rohs && <DetailField label="China RoHS" value={item.z2data_china_rohs} />}
+            {item.z2data_tsca && <DetailField label="TSCA" value={item.z2data_tsca} />}
+            {item.z2data_ca_prop65 && <DetailField label="CA Prop 65" value={item.z2data_ca_prop65} />}
+            {item.z2data_scip_id && <DetailField label="SCIP ID" value={item.z2data_scip_id} />}
+            {item.z2data_lead_free_status && <DetailField label="Lead Free" value={item.z2data_lead_free_status} />}
+          </dl>
+        </div>
+
+        {/* Manufacturing */}
+        <div className="min-w-0">
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Manufacturing
+          </h4>
+          <dl className="space-y-1.5">
+            <DetailField label="Section" value={item.section} />
+            <DetailField
+              label="Country of Origin"
+              value={
+                item.z2data_country_of_origin?.length
+                  ? item.z2data_country_of_origin.map((c) => c.countryName).join(", ")
+                  : null
+              }
+            />
+            {item.z2data_manufacturing_locations?.length ? (
+              <div>
+                <dt className="text-xs text-muted-foreground">Facilities</dt>
+                <dd className="space-y-0.5 text-sm">
+                  {item.z2data_manufacturing_locations.map((loc, i) => (
+                    <div key={i} className="text-xs">
+                      {loc.facilityType} — {loc.cityName}, {loc.countryName}
+                      {loc.siteOwner && ` (${loc.siteOwner})`}
+                    </div>
+                  ))}
+                </dd>
+              </div>
+            ) : (
+              <DetailField label="Facilities" value={null} />
+            )}
+          </dl>
+        </div>
+
+        {/* Sourcing */}
+        <div className="min-w-0">
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Sourcing
+          </h4>
+          <dl className="space-y-1.5">
+            {item.z2data_trade_codes?.length ? (
+              <div>
+                <dt className="text-xs text-muted-foreground">Trade Codes</dt>
+                <dd className="space-y-0.5 text-sm">
+                  {item.z2data_trade_codes.map((tc, i) => (
+                    <div key={i} className="text-xs">
+                      <span className="font-medium">{tc.name}:</span> {tc.value}
+                    </div>
+                  ))}
+                </dd>
+              </div>
+            ) : null}
+            {item.supplier1_name && (
+              <DetailField
+                label="Supplier 1"
+                value={
+                  <span>
+                    {item.supplier1_name}
+                    {item.supplier1_order_number && (
+                      <span className="ml-1 font-mono text-xs text-muted-foreground">
+                        ({item.supplier1_order_number})
+                      </span>
+                    )}
+                  </span>
+                }
+              />
+            )}
+            {item.supplier2_name && (
+              <DetailField
+                label="Supplier 2"
+                value={
+                  <span>
+                    {item.supplier2_name}
+                    {item.supplier2_order_number && (
+                      <span className="ml-1 font-mono text-xs text-muted-foreground">
+                        ({item.supplier2_order_number})
+                      </span>
+                    )}
+                  </span>
+                }
+              />
+            )}
+          </dl>
+        </div>
+      </div>
+
+      {/* Lifecycle comment — full width at bottom if present */}
+      {item.z2data_lc_comment && (
+        <p className="text-xs text-muted-foreground italic">
+          {item.z2data_lc_comment}
+        </p>
+      )}
     </div>
   );
 }
