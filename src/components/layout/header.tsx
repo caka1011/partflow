@@ -7,10 +7,10 @@ import {
   Database,
   FileSpreadsheet,
   ShoppingCart,
-  TrendingUp,
+  ShieldCheck,
   BarChart3,
   Shuffle,
-  ShieldCheck,
+  Cpu,
   Search,
   Bell,
   Settings,
@@ -33,16 +33,11 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { label: "Parts Database", href: "/", icon: Database },
-  { label: "BOMs", href: "/assemblies", icon: FileSpreadsheet },
+  { label: "Projects", href: "/assemblies", icon: FileSpreadsheet },
   { label: "Sourcing", href: "/sourcing", icon: ShoppingCart },
-  {
-    label: "Market Intelligence",
-    href: "/market-intelligence",
-    icon: TrendingUp,
-  },
-  { label: "Demand Planning", href: "/demand-planning", icon: BarChart3 },
+  { label: "Supply Risk Cockpit", href: "/risk-manager", icon: ShieldCheck },
+  { label: "Executive Summary", href: "/executive-summary", icon: BarChart3 },
   { label: "Alternatives", href: "/alternatives", icon: Shuffle },
-  { label: "Risk Manager", href: "/risk-manager", icon: ShieldCheck },
 ];
 
 export function Header() {
@@ -51,8 +46,16 @@ export function Header() {
 
   return (
     <header className="flex shrink-0 items-center border-b bg-white">
+      {/* Logo */}
+      <Link href="/" className="flex items-center gap-2.5 px-5 py-3 shrink-0">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-blue-600">
+          <Cpu className="size-4.5 text-white" />
+        </div>
+        <span className="text-lg font-bold tracking-tight">PartFlow</span>
+      </Link>
+
       {/* Navigation tabs */}
-      <nav className="flex flex-1 items-center gap-0.5 overflow-x-auto px-4">
+      <nav className="flex flex-1 items-center gap-0.5 overflow-x-auto px-2">
         {navLinks.map((link) => {
           const isActive =
             link.href === "/"

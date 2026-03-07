@@ -9,20 +9,12 @@ import {
   YAxis,
   Tooltip,
   Legend,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts";
 import {
-  Building2,
-  FileText,
   Clock,
   DollarSign,
   Package,
   ShoppingCart,
-  Star,
-  Zap,
-  BarChart3,
 } from "lucide-react";
 
 import { KpiCard } from "@/components/layout/kpi-card";
@@ -36,7 +28,6 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -54,13 +45,12 @@ interface OfferRow {
   id: string;
   supplier: string;
   authorized: boolean;
-  packaging: string;
-  moq: number;
+  part: string;
   lead_time_weeks: number;
   stock: number;
   unit_price: number;
   origin_country: string;
-  last_updated: string;
+  manufacturer: string;
 }
 
 const mockOffers: OfferRow[] = [
@@ -68,97 +58,89 @@ const mockOffers: OfferRow[] = [
     id: "off-1",
     supplier: "Digi-Key",
     authorized: true,
-    packaging: "Tape & Reel",
-    moq: 1,
+    part: "STM32F407VGT6",
     lead_time_weeks: 6,
     stock: 14523,
     unit_price: 3.8742,
     origin_country: "US",
-    last_updated: "2026-02-09",
+    manufacturer: "STMicroelectronics",
   },
   {
     id: "off-2",
     supplier: "Mouser",
     authorized: true,
-    packaging: "Tape & Reel",
-    moq: 1,
+    part: "ESP32-WROOM-32E",
     lead_time_weeks: 5,
     stock: 8740,
     unit_price: 3.9215,
     origin_country: "US",
-    last_updated: "2026-02-10",
+    manufacturer: "Espressif",
   },
   {
     id: "off-3",
     supplier: "Arrow",
     authorized: true,
-    packaging: "Tray",
-    moq: 250,
+    part: "TPS63020DSJR",
     lead_time_weeks: 8,
     stock: 3200,
-    unit_price: 3.5100,
+    unit_price: 3.51,
     origin_country: "US",
-    last_updated: "2026-02-08",
+    manufacturer: "Texas Instruments",
   },
   {
     id: "off-4",
     supplier: "Farnell",
     authorized: true,
-    packaging: "Cut Tape",
-    moq: 1,
+    part: "LIS3DHTR",
     lead_time_weeks: 7,
     stock: 5610,
-    unit_price: 4.1280,
+    unit_price: 4.128,
     origin_country: "GB",
-    last_updated: "2026-02-07",
+    manufacturer: "STMicroelectronics",
   },
   {
     id: "off-5",
     supplier: "RS Components",
     authorized: true,
-    packaging: "Tape & Reel",
-    moq: 500,
+    part: "MAX17048G+T10",
     lead_time_weeks: 9,
     stock: 2100,
-    unit_price: 3.6500,
+    unit_price: 3.65,
     origin_country: "GB",
-    last_updated: "2026-02-06",
+    manufacturer: "Analog Devices",
   },
   {
     id: "off-6",
     supplier: "LCSC",
     authorized: false,
-    packaging: "Tape & Reel",
-    moq: 10,
+    part: "GD32F303CCT6",
     lead_time_weeks: 12,
     stock: 0,
-    unit_price: 2.4500,
+    unit_price: 2.45,
     origin_country: "CN",
-    last_updated: "2026-02-05",
+    manufacturer: "GigaDevice",
   },
   {
     id: "off-7",
     supplier: "TME",
     authorized: true,
-    packaging: "Cut Tape",
-    moq: 1,
+    part: "ATMEGA328P-AU",
     lead_time_weeks: 4,
     stock: 920,
-    unit_price: 4.5600,
+    unit_price: 4.56,
     origin_country: "PL",
-    last_updated: "2026-02-10",
+    manufacturer: "Microchip",
   },
   {
     id: "off-8",
     supplier: "Win Source",
     authorized: false,
-    packaging: "Tray",
-    moq: 2500,
+    part: "NRF52840-QIAA",
     lead_time_weeks: 10,
     stock: 15000,
-    unit_price: 5.1800,
+    unit_price: 5.18,
     origin_country: "HK",
-    last_updated: "2026-02-04",
+    manufacturer: "Nordic Semiconductor",
   },
 ];
 
@@ -208,13 +190,11 @@ const columns: ColumnDef<OfferRow>[] = [
     ),
   },
   {
-    accessorKey: "packaging",
-    header: "Packaging",
-  },
-  {
-    accessorKey: "moq",
-    header: "MOQ",
-    cell: ({ row }) => formatNumber(row.original.moq),
+    accessorKey: "part",
+    header: "Part",
+    cell: ({ row }) => (
+      <span className="font-mono text-sm">{row.original.part}</span>
+    ),
   },
   {
     accessorKey: "lead_time_weeks",
@@ -246,30 +226,14 @@ const columns: ColumnDef<OfferRow>[] = [
     ),
   },
   {
-    id: "total",
-    header: "Total (MOQ)",
-    cell: ({ row }) => {
-      const total = row.original.moq * row.original.unit_price;
-      return <span className="font-mono">{formatCurrency(total)}</span>;
-    },
-  },
-  {
     accessorKey: "origin_country",
     header: "Origin",
   },
   {
-    accessorKey: "last_updated",
-    header: "Updated",
-    cell: ({ row }) => relativeDate(row.original.last_updated),
-  },
-  {
-    id: "actions",
-    header: "Actions",
-    cell: () => (
-      <Button size="sm" variant="outline" className="gap-1.5">
-        <ShoppingCart className="size-3.5" />
-        Add to Cart
-      </Button>
+    accessorKey: "manufacturer",
+    header: "Manufacturer",
+    cell: ({ row }) => (
+      <span className="text-sm">{row.original.manufacturer}</span>
     ),
   },
 ];
@@ -283,40 +247,10 @@ const priceChartData = mockOffers.map((o) => ({
   price: o.unit_price,
 }));
 
-const leadTimeData = [
-  { range: "4 wks", count: 1 },
-  { range: "5 wks", count: 1 },
-  { range: "6 wks", count: 1 },
-  { range: "7 wks", count: 1 },
-  { range: "8 wks", count: 1 },
-  { range: "9 wks", count: 1 },
-  { range: "10 wks", count: 1 },
-  { range: "12 wks", count: 1 },
-];
-
-const inStockCount = mockOffers.filter((o) => o.stock > 0).length;
-const outOfStockCount = mockOffers.length - inStockCount;
-
-const stockPieData = [
-  { name: "In Stock", value: inStockCount },
-  { name: "Out of Stock", value: outOfStockCount },
-];
-
-const PIE_COLORS = ["#10b981", "#ef4444"];
-
-// ---------------------------------------------------------------------------
-// Smart recommendations
-// ---------------------------------------------------------------------------
-
-const bestValue = [...mockOffers]
-  .filter((o) => o.stock > 0)
-  .sort((a, b) => a.unit_price - b.unit_price)[0];
-
-const fastestDelivery = [...mockOffers]
-  .filter((o) => o.stock > 0)
-  .sort((a, b) => a.lead_time_weeks - b.lead_time_weeks)[0];
-
-const highestStock = [...mockOffers].sort((a, b) => b.stock - a.stock)[0];
+const leadTimeBySupplierData = mockOffers.map((o) => ({
+  supplier: o.supplier,
+  leadTime: o.lead_time_weeks,
+}));
 
 // ---------------------------------------------------------------------------
 // Page component
@@ -327,6 +261,7 @@ export default function SourcingPage() {
   const [authorizedOnly, setAuthorizedOnly] = useState(false);
   const [bestPriceOnly, setBestPriceOnly] = useState(false);
   const [sortBy, setSortBy] = useState<string>("price");
+  const [selectedProject, setSelectedProject] = useState<string>("nightrunner-cortex");
 
   // Filter offers
   let filteredOffers = [...mockOffers];
@@ -373,66 +308,64 @@ export default function SourcingPage() {
       {/* ----------------------------------------------------------------- */}
       {/* 2. KPI cards                                                      */}
       {/* ----------------------------------------------------------------- */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Active Distributors"
-          value={8}
-          icon={Building2}
-        />
-        <KpiCard
-          title="Total Offers"
-          value={37}
-          icon={FileText}
-          trend={{ value: 8, positive: true }}
+          title="Parts"
+          value={83}
+          icon={Package}
         />
         <KpiCard
           title="Avg Lead Time"
-          value="6.2 wks"
+          value="6 wks"
           icon={Clock}
         />
         <KpiCard
-          title="Best Price"
-          value="$2.45"
+          title="Material Cost"
+          value={"\u03A3 500 Riyal"}
           icon={DollarSign}
-          trend={{ value: 3, positive: true }}
         />
         <KpiCard
           title="In Stock %"
           value="78%"
-          icon={Package}
+          icon={ShoppingCart}
         />
       </div>
 
       {/* ----------------------------------------------------------------- */}
-      {/* 3. Part selector card                                             */}
+      {/* 3. Project selector card                                          */}
       {/* ----------------------------------------------------------------- */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Selected Part</CardTitle>
+          <CardTitle className="text-base">Selected Project: Nightrunner Cortex</CardTitle>
           <CardDescription>
-            Currently comparing offers for this part
+            Choose a project to view its sourcing details
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
             <div>
-              <p className="text-xs text-muted-foreground">Part</p>
-              <p className="font-semibold">STM32F407VGT6</p>
+              <p className="text-xs text-muted-foreground">Project</p>
+              <Select value={selectedProject} onValueChange={setSelectedProject}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nightrunner-cortex">Nightrunner Cortex</SelectItem>
+                  <SelectItem value="powergrid-alpha">PowerGrid Alpha</SelectItem>
+                  <SelectItem value="sensor-hub-v2">Sensor Hub v2</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Description</p>
-              <p className="text-sm">ARM Cortex-M4 MCU 168MHz 1MB Flash</p>
+              <p className="text-xs text-muted-foreground">Parts</p>
+              <p className="text-sm font-semibold">83</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Manufacturer</p>
-              <p className="text-sm">STMicroelectronics</p>
+              <p className="text-xs text-muted-foreground">Suppliers</p>
+              <p className="text-sm font-semibold">12</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Package</p>
-              <p className="text-sm">LQFP-100</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Lifecycle</p>
+              <p className="text-xs text-muted-foreground">Status</p>
               <Badge className="mt-0.5 bg-emerald-100 text-emerald-700 border-emerald-200">
                 Active
               </Badge>
@@ -490,51 +423,48 @@ export default function SourcingPage() {
       />
 
       {/* ----------------------------------------------------------------- */}
-      {/* 6. Price comparison chart                                         */}
-      {/* ----------------------------------------------------------------- */}
-      <ChartContainer
-        title="Price Comparison"
-        subtitle="Unit price by supplier"
-        height={320}
-      >
-        <BarChart data={priceChartData}>
-          <XAxis
-            dataKey="supplier"
-            tick={{ fontSize: 12 }}
-            tickLine={false}
-            axisLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 12 }}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v: number) => `$${v.toFixed(2)}`}
-          />
-          <Tooltip
-            formatter={(value) => [formatCurrency(Number(value ?? 0)), "Unit Price"]}
-          />
-          <Legend />
-          <Bar
-            dataKey="price"
-            name="Unit Price"
-            fill="#3b82f6"
-            radius={[4, 4, 0, 0]}
-          />
-        </BarChart>
-      </ChartContainer>
-
-      {/* ----------------------------------------------------------------- */}
-      {/* 7. Bottom row charts                                              */}
+      {/* 6. Bottom row charts                                              */}
       {/* ----------------------------------------------------------------- */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartContainer
-          title="Lead Time Distribution"
-          subtitle="Number of suppliers by lead time"
+          title="Price Comparison \u2014 STM32F407VGT6"
+          subtitle="Unit price by supplier"
           height={280}
         >
-          <BarChart data={leadTimeData}>
+          <BarChart data={priceChartData}>
             <XAxis
-              dataKey="range"
+              dataKey="supplier"
+              tick={{ fontSize: 12 }}
+              tickLine={false}
+              axisLine={false}
+            />
+            <YAxis
+              tick={{ fontSize: 12 }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v: number) => `$${v.toFixed(2)}`}
+            />
+            <Tooltip
+              formatter={(value) => [formatCurrency(Number(value ?? 0)), "Unit Price"]}
+            />
+            <Legend />
+            <Bar
+              dataKey="price"
+              name="Unit Price"
+              fill="#3b82f6"
+              radius={[4, 4, 0, 0]}
+            />
+          </BarChart>
+        </ChartContainer>
+
+        <ChartContainer
+          title="Lead Time by Supplier \u2014 STM32F407VGT6"
+          subtitle="Lead time in weeks per supplier"
+          height={280}
+        >
+          <BarChart data={leadTimeBySupplierData}>
+            <XAxis
+              dataKey="supplier"
               tick={{ fontSize: 12 }}
               tickLine={false}
               axisLine={false}
@@ -544,130 +474,20 @@ export default function SourcingPage() {
               tickLine={false}
               axisLine={false}
               allowDecimals={false}
+              tickFormatter={(v: number) => `${v} wks`}
             />
-            <Tooltip />
+            <Tooltip
+              formatter={(value) => [`${value} weeks`, "Lead Time"]}
+            />
+            <Legend />
             <Bar
-              dataKey="count"
-              name="Suppliers"
+              dataKey="leadTime"
+              name="Lead Time (wks)"
               fill="#8b5cf6"
               radius={[4, 4, 0, 0]}
             />
           </BarChart>
         </ChartContainer>
-
-        <ChartContainer
-          title="Stock Availability"
-          subtitle="Suppliers with stock vs out of stock"
-          height={280}
-        >
-          <PieChart>
-            <Pie
-              data={stockPieData}
-              cx="50%"
-              cy="50%"
-              innerRadius={70}
-              outerRadius={100}
-              paddingAngle={4}
-              dataKey="value"
-              nameKey="name"
-              label={({ name, value }) => `${name}: ${value}`}
-            >
-              {stockPieData.map((entry, index) => (
-                <Cell
-                  key={`cell-${entry.name}`}
-                  fill={PIE_COLORS[index % PIE_COLORS.length]}
-                />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ChartContainer>
-      </div>
-
-      {/* ----------------------------------------------------------------- */}
-      {/* 8. Smart Recommendations                                          */}
-      {/* ----------------------------------------------------------------- */}
-      <div>
-        <h2 className="mb-4 text-lg font-semibold tracking-tight">
-          Smart Recommendations
-        </h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {/* Best Value */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-                  <Star className="size-4" />
-                </div>
-                <CardTitle className="text-base">Best Value</CardTitle>
-              </div>
-              <CardDescription>
-                Best price among in-stock suppliers
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-lg font-bold">{bestValue.supplier}</p>
-              <p className="text-sm text-muted-foreground">
-                {formatCurrency(bestValue.unit_price)} per unit &middot;{" "}
-                {formatNumber(bestValue.stock)} in stock
-              </p>
-              <Button size="sm" className="mt-3 w-full">
-                Select
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Fastest Delivery */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                  <Zap className="size-4" />
-                </div>
-                <CardTitle className="text-base">Fastest Delivery</CardTitle>
-              </div>
-              <CardDescription>
-                Shortest lead time with available stock
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-lg font-bold">{fastestDelivery.supplier}</p>
-              <p className="text-sm text-muted-foreground">
-                {fastestDelivery.lead_time_weeks} weeks lead time &middot;{" "}
-                {formatCurrency(fastestDelivery.unit_price)} per unit
-              </p>
-              <Button size="sm" className="mt-3 w-full">
-                Select
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Highest Stock */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                  <BarChart3 className="size-4" />
-                </div>
-                <CardTitle className="text-base">Highest Stock</CardTitle>
-              </div>
-              <CardDescription>
-                Supplier with the most available units
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-lg font-bold">{highestStock.supplier}</p>
-              <p className="text-sm text-muted-foreground">
-                {formatNumber(highestStock.stock)} units &middot;{" "}
-                {formatCurrency(highestStock.unit_price)} per unit
-              </p>
-              <Button size="sm" className="mt-3 w-full">
-                Select
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );

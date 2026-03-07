@@ -6,6 +6,8 @@ import {
   Area,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -24,6 +26,7 @@ import {
   Package,
   FileWarning,
   MapPin,
+  ClipboardList,
 } from "lucide-react";
 
 import { KpiCard } from "@/components/layout/kpi-card";
@@ -200,12 +203,39 @@ const geoRiskParts: GeoRiskPart[] = [
   { mpn: "LMZ31710RVQR", country: "Mexico", risk_type: "Quality", risk_score: 25, affected_assemblies: 4 },
 ];
 
-const eventTypeDistribution = [
-  { type: "Supply Disruption", count: 12 },
-  { type: "EOL", count: 8 },
-  { type: "Single Source", count: 15 },
-  { type: "Geopolitical", count: 6 },
-  { type: "Quality", count: 4 },
+const countryDistribution = [
+  { country: "China", count: 18 },
+  { country: "USA", count: 30 },
+  { country: "EU", count: 25 },
+  { country: "Taiwan", count: 8 },
+  { country: "Others", count: 6 },
+];
+
+const partDistribution = [
+  { label: "Low Risk", count: 180, color: "#22c55e" },
+  { label: "Medium Risk", count: 85, color: "#eab308" },
+  { label: "High Risk", count: 35, color: "#ef4444" },
+];
+
+const expectedEolLifetime = [
+  { date: "08/26", parts: 300 },
+  { date: "10/26", parts: 265 },
+  { date: "12/26", parts: 220 },
+  { date: "07/27", parts: 180 },
+];
+
+const lifecycleSummary = [
+  { status: "Active", count: 10, color: "#22c55e" },
+  { status: "NRND", count: 8, color: "#eab308" },
+  { status: "Obsolete", count: 5, color: "#f97316" },
+  { status: "EOL", count: 1, color: "#ef4444" },
+];
+
+const complianceSummary = [
+  { label: "ITAR", count: 8, total: 30, color: "#6366f1" },
+  { label: "EAR", count: 10, total: 30, color: "#8b5cf6" },
+  { label: "RoHS", count: 27, total: 30, color: "#22c55e" },
+  { label: "REACH", count: 25, total: 30, color: "#14b8a6" },
 ];
 
 const pcnEntries: PcnEntry[] = [
@@ -393,6 +423,52 @@ function formatTimestamp(ts: string) {
 }
 
 // ---------------------------------------------------------------------------
+// SVG Circular Gauge Component
+// ---------------------------------------------------------------------------
+
+function BomHealthGauge({ percentage }: { percentage: number }) {
+  const radius = 70;
+  const strokeWidth = 14;
+  const normalizedRadius = radius - strokeWidth / 2;
+  const circumference = 2 * Math.PI * normalizedRadius;
+  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+  return (
+    <div className="flex flex-col items-center justify-center">
+      <svg width={radius * 2} height={radius * 2} className="-rotate-90">
+        {/* Background circle */}
+        <circle
+          cx={radius}
+          cy={radius}
+          r={normalizedRadius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          className="text-muted/30"
+        />
+        {/* Progress circle */}
+        <circle
+          cx={radius}
+          cy={radius}
+          r={normalizedRadius}
+          fill="none"
+          stroke="#22c55e"
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          className="transition-all duration-500"
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-4xl font-bold">{percentage}%</span>
+        <span className="text-sm text-muted-foreground">Health Score</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Table Column Definitions
 // ---------------------------------------------------------------------------
 
@@ -566,19 +642,19 @@ const riskCategories = [
 const regionalExposure = [
   {
     region: "Asia-Pacific",
-    parts: 8,
+    parts: 12,
     riskLevel: "High" as const,
     countries: ["China", "Taiwan", "Thailand", "Malaysia"],
   },
   {
     region: "Europe",
-    parts: 5,
+    parts: 25,
     riskLevel: "Medium" as const,
     countries: ["Netherlands", "Germany", "France"],
   },
   {
     region: "Americas",
-    parts: 7,
+    parts: 30,
     riskLevel: "Low" as const,
     countries: ["USA", "Mexico"],
   },
@@ -589,15 +665,17 @@ const regionalExposure = [
 // ---------------------------------------------------------------------------
 
 export default function RiskManagerPage() {
+  const totalParts = partDistribution.reduce((sum, d) => sum + d.count, 0);
+
   return (
     <div className="space-y-6">
       {/* ----------------------------------------------------------------- */}
       {/* Header                                                            */}
       {/* ----------------------------------------------------------------- */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Risk Manager</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Supply Risk Cockpit</h1>
         <p className="text-muted-foreground mt-1">
-          Monitor and mitigate supply chain risks across your component portfolio
+          Unified view of supply chain health, geographic exposure, and component lifecycle risks
         </p>
       </div>
 
@@ -637,86 +715,137 @@ export default function RiskManagerPage() {
       {/* ----------------------------------------------------------------- */}
       {/* Tabs                                                              */}
       {/* ----------------------------------------------------------------- */}
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue="healthcheck">
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="healthcheck">Health Check</TabsTrigger>
           <TabsTrigger value="georisk">GeoRisk</TabsTrigger>
           <TabsTrigger value="pcns">PCNs</TabsTrigger>
           <TabsTrigger value="alerts">Alerts</TabsTrigger>
         </TabsList>
 
-        {/* ----- Overview Tab ----- */}
-        <TabsContent value="overview" className="space-y-6 pt-4">
-          {/* Risk Category Cards */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {riskCategories.map((cat) => {
-              const Icon = cat.icon;
-              return (
-                <Card key={cat.title} className="gap-0 py-0">
-                  <CardContent className="flex items-center justify-between p-5">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex size-10 items-center justify-center rounded-lg ${cat.bg}`}
-                      >
-                        <Icon className={`size-5 ${cat.color}`} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{cat.title}</p>
-                        <p className="text-2xl font-bold">{cat.count}</p>
-                      </div>
+        {/* ----- Health Check Tab ----- */}
+        <TabsContent value="healthcheck" className="space-y-6 pt-4">
+          {/* BOM Health Score + Part Distribution */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* BOM Health Score */}
+            <Card className="gap-0 py-0">
+              <CardHeader className="pb-2 pt-5">
+                <CardTitle className="text-base">BOM Health Score</CardTitle>
+                <CardDescription>
+                  Overall health of your bill of materials
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-5 pt-2 flex items-center justify-center">
+                <div className="relative flex items-center justify-center py-4">
+                  <BomHealthGauge percentage={75} />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Part Distribution */}
+            <Card className="gap-0 py-0">
+              <CardHeader className="pb-2 pt-5">
+                <CardTitle className="text-base">Part Distribution</CardTitle>
+                <CardDescription>
+                  Risk breakdown across {totalParts} parts
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-5 pt-2 space-y-4">
+                {partDistribution.map((item) => (
+                  <div key={item.label} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{item.label}</span>
+                      <span className="text-muted-foreground">
+                        {item.count} parts
+                      </span>
                     </div>
-                    <Button variant="outline" size="sm">
-                      View
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                    <div className="h-3 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${(item.count / totalParts) * 100}%`,
+                          backgroundColor: item.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Risk Score Distribution */}
-          <ChartContainer
-            title="Risk Score Distribution"
-            subtitle="Average portfolio risk score over the last 6 months"
-            height={300}
-          >
-            <AreaChart data={riskScoreTrend}>
-              <defs>
-                <linearGradient id="riskGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#f97316" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#f97316" stopOpacity={0.05} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="month"
-                tickLine={false}
-                axisLine={false}
-                fontSize={12}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                fontSize={12}
-                domain={[0, 100]}
-              />
-              <Tooltip
-                contentStyle={{
-                  borderRadius: "8px",
-                  border: "1px solid #e5e7eb",
-                  fontSize: "13px",
-                }}
-              />
-              <Area
-                type="monotone"
-                dataKey="score"
-                stroke="#f97316"
-                strokeWidth={2}
-                fill="url(#riskGrad)"
-                name="Risk Score"
-              />
-            </AreaChart>
-          </ChartContainer>
+          {/* Expected EOL Lifetime + Lifecycle Summary */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Expected EOL Lifetime */}
+            <ChartContainer
+              title="Expected EOL Lifetime"
+              subtitle="Projected parts count over time as components reach end of life"
+              height={300}
+            >
+              <LineChart data={expectedEolLifetime}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={12}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={12}
+                  domain={[0, 350]}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "1px solid #e5e7eb",
+                    fontSize: "13px",
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="parts"
+                  stroke="#6366f1"
+                  strokeWidth={2}
+                  dot={{ fill: "#6366f1", r: 5 }}
+                  activeDot={{ r: 7 }}
+                  name="Parts"
+                />
+              </LineChart>
+            </ChartContainer>
+
+            {/* Lifecycle Summary */}
+            <Card className="gap-0 py-0">
+              <CardHeader className="pb-2 pt-5">
+                <CardTitle className="text-base">Lifecycle Summary</CardTitle>
+                <CardDescription>
+                  Component lifecycle status distribution
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-5 pt-2 space-y-4">
+                {lifecycleSummary.map((item) => (
+                  <div key={item.status} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{item.status}</span>
+                      <span className="text-muted-foreground">
+                        {item.count}
+                      </span>
+                    </div>
+                    <div className="h-3 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${(item.count / 24) * 100}%`,
+                          backgroundColor: item.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Flagged Components Table */}
           <Card className="gap-0 py-0">
@@ -739,9 +868,9 @@ export default function RiskManagerPage() {
 
         {/* ----- GeoRisk Tab ----- */}
         <TabsContent value="georisk" className="space-y-6 pt-4">
-          {/* Regional Exposure */}
+          {/* Regional Dependencies */}
           <div>
-            <h2 className="text-lg font-semibold mb-3">Regional Exposure</h2>
+            <h2 className="text-lg font-semibold mb-3">Regional Dependencies</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {regionalExposure.map((region) => (
                 <Card key={region.region} className="gap-0 py-0">
@@ -763,7 +892,7 @@ export default function RiskManagerPage() {
                         {region.parts}
                       </span>
                       <span className="text-sm text-muted-foreground">
-                        parts at risk
+                        parts
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1">
@@ -779,16 +908,16 @@ export default function RiskManagerPage() {
             </div>
           </div>
 
-          {/* Event Type Distribution */}
+          {/* Country Distribution Bar Chart */}
           <ChartContainer
-            title="Event Type Distribution"
-            subtitle="Count of risk events by category"
+            title="Country Distribution"
+            subtitle="Number of parts sourced by country / region"
             height={300}
           >
-            <BarChart data={eventTypeDistribution}>
+            <BarChart data={countryDistribution}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis
-                dataKey="type"
+                dataKey="country"
                 tickLine={false}
                 axisLine={false}
                 fontSize={12}
@@ -805,15 +934,46 @@ export default function RiskManagerPage() {
                 dataKey="count"
                 fill="#6366f1"
                 radius={[4, 4, 0, 0]}
-                name="Events"
+                name="Parts"
               />
             </BarChart>
           </ChartContainer>
 
-          {/* At-Risk Parts Table */}
+          {/* Compliance Summary */}
           <Card className="gap-0 py-0">
             <CardHeader className="pb-2 pt-5">
-              <CardTitle className="text-base">At-Risk Parts</CardTitle>
+              <CardTitle className="text-base">Compliance Summary</CardTitle>
+              <CardDescription>
+                Regulatory compliance status across your portfolio
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pb-5 pt-2 space-y-4">
+              {complianceSummary.map((item) => (
+                <div key={item.label} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{item.label}</span>
+                    <span className="text-muted-foreground">
+                      {item.count} / {item.total}
+                    </span>
+                  </div>
+                  <div className="h-3 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${(item.count / item.total) * 100}%`,
+                        backgroundColor: item.color,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Flagged Components Table */}
+          <Card className="gap-0 py-0">
+            <CardHeader className="pb-2 pt-5">
+              <CardTitle className="text-base">Flagged Components</CardTitle>
               <CardDescription>
                 Components with geographic risk exposure
               </CardDescription>
@@ -943,6 +1103,10 @@ export default function RiskManagerPage() {
                           <div className="flex gap-2 shrink-0">
                             <Button variant="outline" size="sm">
                               Acknowledge
+                            </Button>
+                            <Button variant="outline" size="sm">
+                              <ClipboardList className="size-3.5 mr-1.5" />
+                              Create Task
                             </Button>
                             <Button variant="ghost" size="sm">
                               Dismiss

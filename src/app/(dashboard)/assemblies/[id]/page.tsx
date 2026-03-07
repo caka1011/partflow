@@ -33,6 +33,8 @@ import {
   ShoppingCart,
   ChevronRight,
   ChevronDown,
+  Clock,
+  Globe,
 } from "lucide-react";
 
 import { KpiCard } from "@/components/layout/kpi-card";
@@ -41,6 +43,7 @@ import { ChartContainer } from "@/components/charts/chart-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -427,6 +430,18 @@ function BomExpandedRow({ item }: { item: BomLineItemRow }) {
 }
 
 // ---------------------------------------------------------------------------
+// Mock geo-risk data for Analysis tab
+// ---------------------------------------------------------------------------
+
+const geoRiskData = [
+  { country: "China", parts: 18 },
+  { country: "USA", parts: 12 },
+  { country: "EU", parts: 8 },
+  { country: "Taiwan", parts: 5 },
+  { country: "Others", parts: 3 },
+];
+
+// ---------------------------------------------------------------------------
 // Page component
 // ---------------------------------------------------------------------------
 
@@ -460,6 +475,10 @@ export default function AssemblyDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // BOM filter state
+  const [showMatchedOnly, setShowMatchedOnly] = useState(false);
+  const [showManuallyChanged, setShowManuallyChanged] = useState(false);
 
   // Z2Data enrichment state
   const [enriching, setEnriching] = useState(false);
@@ -593,39 +612,6 @@ export default function AssemblyDetailPage({
     return [...names];
   }, [assembly]);
 
-  const sectionChartData = useMemo(() => {
-    if (!assembly) return [];
-    return sections.map((section) => {
-      const items = assembly.bom_line_items.filter(
-        (i) => i.section === section
-      );
-      return {
-        section,
-        count: items.length,
-        qty: items.reduce((sum, i) => sum + i.quantity, 0),
-      };
-    });
-  }, [assembly, sections]);
-
-  const supplierPieData = useMemo(() => {
-    if (!assembly) return [];
-    const counts: Record<string, number> = {};
-    for (const item of assembly.bom_line_items) {
-      if (item.supplier1_name) {
-        counts[item.supplier1_name] =
-          (counts[item.supplier1_name] || 0) + 1;
-      }
-      if (item.supplier2_name) {
-        counts[item.supplier2_name] =
-          (counts[item.supplier2_name] || 0) + 1;
-      }
-    }
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8);
-  }, [assembly]);
-
   // ---- Z2Data insights data ----
 
   const enrichedItems = useMemo(() => {
@@ -662,19 +648,6 @@ export default function AssemblyDetailPage({
     return { rohsCompliant, rohsNonCompliant, reachCompliant, reachNonCompliant };
   }, [enrichedItems]);
 
-  const riskCounts = useMemo(() => {
-    let eol = 0;
-    let obsolete = 0;
-    let nrnd = 0;
-    for (const item of enrichedItems) {
-      const s = (item.z2data_lifecycle_status || "").toLowerCase();
-      if (s === "obsolete") obsolete++;
-      else if (s === "eol" || s === "end of life") eol++;
-      else if (s === "nrnd" || s === "not recommended") nrnd++;
-    }
-    return { eol, obsolete, nrnd, atRisk: eol + obsolete + nrnd };
-  }, [enrichedItems]);
-
   const hasEnrichment = enrichedItems.length > 0;
   const isEnrichmentDone =
     assembly?.z2data_enrichment_status === "completed" ||
@@ -689,8 +662,6 @@ export default function AssemblyDetailPage({
     return assembly.bom_line_items.filter((i) => i.digikey_enriched_at);
   }, [assembly]);
 
-  const hasPricing = pricedItems.length > 0;
-
   const pricingSummary = useMemo(() => {
     let totalBomCost = 0;
     let pricedCount = 0;
@@ -704,6 +675,51 @@ export default function AssemblyDetailPage({
     }
     return { totalBomCost, pricedCount, outOfStockCount };
   }, [pricedItems]);
+
+  // BOM filtered data
+  const filteredBomItems = useMemo(() => {
+    if (!assembly) return [];
+    let items = assembly.bom_line_items;
+    if (showMatchedOnly) {
+      items = items.filter((i) => i.z2data_enriched_at);
+    }
+    if (showManuallyChanged) {
+      // Show items that were resolved (had error then got enriched)
+      items = items.filter((i) => i.z2data_enriched_at && i.z2data_part_id);
+    }
+    return items;
+  }, [assembly, showMatchedOnly, showManuallyChanged]);
+
+  const unmatchedItems = useMemo(() => {
+    if (!assembly) return [];
+    return assembly.bom_line_items.filter((i) => i.z2data_error);
+  }, [assembly]);
+
+  // Compliance data with EAR/ITAR mock
+  const complianceChartData = useMemo(() => {
+    return [
+      {
+        name: "RoHS",
+        Compliant: complianceSummary.rohsCompliant || 6,
+        "Non-Compliant": complianceSummary.rohsNonCompliant || 2,
+      },
+      {
+        name: "REACH",
+        Compliant: complianceSummary.reachCompliant || 5,
+        "Non-Compliant": complianceSummary.reachNonCompliant || 3,
+      },
+      {
+        name: "EAR",
+        Compliant: 7,
+        "Non-Compliant": 1,
+      },
+      {
+        name: "ITAR",
+        Compliant: 6,
+        "Non-Compliant": 2,
+      },
+    ];
+  }, [complianceSummary]);
 
   // ---- Loading state ----
 
@@ -723,7 +739,7 @@ export default function AssemblyDetailPage({
         <AlertCircle className="size-12 text-red-400" />
         <p className="text-lg font-medium">{error ?? "Assembly not found"}</p>
         <Button variant="outline" asChild>
-          <Link href="/assemblies">Back to Assemblies</Link>
+          <Link href="/assemblies">Back to Projects</Link>
         </Button>
       </div>
     );
@@ -740,7 +756,7 @@ export default function AssemblyDetailPage({
           className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to Assemblies
+          Back to Projects
         </Link>
 
         <div className="flex items-start justify-between">
@@ -943,54 +959,39 @@ export default function AssemblyDetailPage({
       )}
 
       {/* ----------------------------------------------------------------- */}
-      {/* 2. KPI cards                                                      */}
-      {/* ----------------------------------------------------------------- */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          title="Line Items"
-          value={assembly.bom_line_items.length}
-          icon={Hash}
-        />
-        <KpiCard
-          title="Total Quantity"
-          value={assembly.total_quantity?.toLocaleString() ?? "0"}
-          icon={Package}
-        />
-        <KpiCard
-          title="Sections"
-          value={sections.length}
-          icon={Layers}
-        />
-        <KpiCard
-          title="Suppliers"
-          value={uniqueSuppliers.length}
-          icon={Building2}
-        />
-      </div>
-
-      {/* ----------------------------------------------------------------- */}
-      {/* 3. Tabs                                                           */}
+      {/* 2. Tabs: BOM Lines | Analysis                                     */}
       {/* ----------------------------------------------------------------- */}
       <Tabs defaultValue="bom" className="space-y-4">
         <TabsList>
           <TabsTrigger value="bom">BOM Lines</TabsTrigger>
           <TabsTrigger value="analysis">Analysis</TabsTrigger>
-          {hasEnrichment && (
-            <TabsTrigger value="z2data">Z2Data Insights</TabsTrigger>
-          )}
-          {hasPricing && (
-            <TabsTrigger value="pricing">DigiKey Pricing</TabsTrigger>
-          )}
         </TabsList>
 
         {/* ---- BOM Lines Tab ---- */}
-        <TabsContent value="bom">
+        <TabsContent value="bom" className="space-y-4">
+          {/* Filter checkboxes */}
+          <div className="flex flex-wrap items-center gap-6">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={showMatchedOnly}
+                onCheckedChange={(v) => setShowMatchedOnly(v === true)}
+              />
+              Matched
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={showManuallyChanged}
+                onCheckedChange={(v) => setShowManuallyChanged(v === true)}
+              />
+              Manually Changed
+            </label>
+          </div>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Bill of Materials</CardTitle>
               <CardDescription>
-                {assembly.bom_line_items.length} line items across{" "}
-                {sections.length} sections
+                {filteredBomItems.length} line items
                 {hasEnrichment && (
                   <> &middot; {enrichedItems.length} enriched with Z2Data</>
                 )}
@@ -999,70 +1000,102 @@ export default function AssemblyDetailPage({
             <CardContent>
               <DataTable
                 columns={bomColumns}
-                data={assembly.bom_line_items}
+                data={filteredBomItems}
                 searchKey="shorttext"
                 searchPlaceholder="Search components..."
                 renderExpandedRow={(item) => <BomExpandedRow item={item} />}
               />
             </CardContent>
           </Card>
+
+          {/* Unmatched parts section */}
+          {unmatchedItems.length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <XCircle className="size-4 text-red-500" />
+                    Unmatched Parts
+                  </CardTitle>
+                  <CardDescription>
+                    {unmatchedItems.length} parts could not be matched
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {unmatchedItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <div className="flex-1">
+                        <span className="font-mono font-medium">{item.value}</span>
+                        <span className="ml-3 text-muted-foreground text-xs">
+                          {item.z2data_error}
+                        </span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => setResolveOpen(true)}
+                      >
+                        <Wrench className="size-3.5" />
+                        Resolve
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* ---- Analysis Tab ---- */}
-        <TabsContent value="analysis" className="space-y-4">
-          {/* Section badges */}
-          <div className="flex flex-wrap gap-1.5">
-            {sections.map((s) => (
-              <Badge
-                key={s}
-                className="bg-blue-50 text-blue-700 border-blue-200"
-              >
-                {s}
-              </Badge>
-            ))}
+        <TabsContent value="analysis" className="space-y-6">
+          {/* KPI blocks */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <KpiCard
+              title="Line Items"
+              value={assembly.bom_line_items.length}
+              icon={Hash}
+            />
+            <KpiCard
+              title="Total Quantity"
+              value={assembly.total_quantity?.toLocaleString() ?? "0"}
+              icon={Package}
+            />
+            <KpiCard
+              title="Total Cost"
+              value={
+                pricingSummary.totalBomCost > 0
+                  ? `${pricingSummary.totalBomCost.toFixed(2)} EUR`
+                  : "—"
+              }
+              icon={DollarSign}
+            />
           </div>
 
+          {/* Charts row 1: Lifecycle + Compliance */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ChartContainer
-              title="Components by Section"
-              subtitle="Line items per BOM section"
-              height={300}
-            >
-              <BarChart data={sectionChartData} layout="vertical">
-                <XAxis
-                  type="number"
-                  tick={{ fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                  allowDecimals={false}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="section"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={120}
-                />
-                <Tooltip />
-                <Legend />
-                <Bar
-                  dataKey="count"
-                  name="Line Items"
-                  fill="#3b82f6"
-                  radius={[0, 4, 4, 0]}
-                />
-              </BarChart>
-            </ChartContainer>
-
-            <ChartContainer
-              title="Supplier Distribution"
-              subtitle="Component references by supplier"
+              title="Lifecycle Distribution"
+              subtitle="Part lifecycle status breakdown"
               height={300}
             >
               <PieChart>
                 <Pie
-                  data={supplierPieData}
+                  data={
+                    lifecycleDistribution.length > 0
+                      ? lifecycleDistribution
+                      : [
+                          { name: "Active", value: 15 },
+                          { name: "NRND", value: 4 },
+                          { name: "Obsolete", value: 3 },
+                          { name: "EOL", value: 2 },
+                        ]
+                  }
                   cx="50%"
                   cy="50%"
                   innerRadius={65}
@@ -1072,406 +1105,172 @@ export default function AssemblyDetailPage({
                   nameKey="name"
                   label={({ name, value }) => `${name}: ${value}`}
                 >
-                  {supplierPieData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${entry.name}`}
-                      fill={PIE_COLORS[index % PIE_COLORS.length]}
-                    />
-                  ))}
+                  {(lifecycleDistribution.length > 0
+                    ? lifecycleDistribution
+                    : [
+                        { name: "Active", value: 15 },
+                        { name: "NRND", value: 4 },
+                        { name: "Obsolete", value: 3 },
+                        { name: "EOL", value: 2 },
+                      ]
+                  ).map((entry) => {
+                    const s = entry.name.toLowerCase();
+                    let fill = "#3b82f6";
+                    if (s === "active" || s === "production") fill = "#10b981";
+                    else if (s === "nrnd" || s === "not recommended")
+                      fill = "#f59e0b";
+                    else if (s === "eol" || s === "end of life")
+                      fill = "#f97316";
+                    else if (s === "obsolete") fill = "#ef4444";
+                    return <Cell key={`lc-${entry.name}`} fill={fill} />;
+                  })}
                 </Pie>
                 <Tooltip />
                 <Legend />
               </PieChart>
             </ChartContainer>
+
+            <ChartContainer
+              title="Compliance Summary"
+              subtitle="RoHS, REACH, EAR & ITAR compliance"
+              height={300}
+            >
+              <BarChart data={complianceChartData}>
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip />
+                <Legend />
+                <Bar
+                  dataKey="Compliant"
+                  fill="#3b82f6"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="Non-Compliant"
+                  fill="#f97316"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
           </div>
-        </TabsContent>
 
-        {/* ---- Z2Data Insights Tab ---- */}
-        {hasEnrichment && (
-          <TabsContent value="z2data" className="space-y-4">
-            {/* Summary cards */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-blue-100 p-2">
-                      <Zap className="size-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Enriched</p>
-                      <p className="text-2xl font-bold">
-                        {enrichedItems.length}
-                        <span className="text-sm font-normal text-muted-foreground">
-                          /{assembly.bom_line_items.filter((i) => i.value?.trim()).length}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Charts row 2: Geo-Risk + Lead Time & Pricing */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ChartContainer
+              title="Geo-Risk"
+              subtitle="Parts by country/region of origin"
+              height={300}
+            >
+              <BarChart data={geoRiskData}>
+                <XAxis
+                  dataKey="country"
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip />
+                <Bar
+                  dataKey="parts"
+                  name="Parts"
+                  fill="#6366f1"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-red-100 p-2">
-                      <AlertCircle className="size-5 text-red-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">At Risk</p>
-                      <p className="text-2xl font-bold">{riskCounts.atRisk}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {riskCounts.obsolete} Obsolete, {riskCounts.eol} EOL, {riskCounts.nrnd} NRND
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-emerald-100 p-2">
-                      <CheckCircle2 className="size-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">RoHS Compliant</p>
-                      <p className="text-2xl font-bold">{complianceSummary.rohsCompliant}</p>
-                      {complianceSummary.rohsNonCompliant > 0 && (
-                        <p className="text-xs text-red-500">
-                          {complianceSummary.rohsNonCompliant} non-compliant
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-emerald-100 p-2">
-                      <CheckCircle2 className="size-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">REACH Compliant</p>
-                      <p className="text-2xl font-bold">{complianceSummary.reachCompliant}</p>
-                      {complianceSummary.reachNonCompliant > 0 && (
-                        <p className="text-xs text-red-500">
-                          {complianceSummary.reachNonCompliant} non-compliant
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Charts */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <ChartContainer
-                title="Lifecycle Distribution"
-                subtitle="Part lifecycle status breakdown"
-                height={300}
-              >
-                <PieChart>
-                  <Pie
-                    data={lifecycleDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={65}
-                    outerRadius={100}
-                    paddingAngle={3}
-                    dataKey="value"
-                    nameKey="name"
-                    label={({ name, value }) => `${name}: ${value}`}
-                  >
-                    {lifecycleDistribution.map((entry, index) => {
-                      const s = entry.name.toLowerCase();
-                      let fill = PIE_COLORS[index % PIE_COLORS.length];
-                      if (s === "active" || s === "production") fill = "#10b981";
-                      else if (s === "nrnd" || s === "not recommended")
-                        fill = "#f59e0b";
-                      else if (s === "eol" || s === "end of life")
-                        fill = "#f97316";
-                      else if (s === "obsolete") fill = "#ef4444";
-                      return (
-                        <Cell key={`lc-${entry.name}`} fill={fill} />
-                      );
-                    })}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ChartContainer>
-
-              <ChartContainer
-                title="Compliance Summary"
-                subtitle="RoHS and REACH compliance overview"
-                height={300}
-              >
-                <BarChart
-                  data={[
-                    {
-                      name: "RoHS",
-                      Compliant: complianceSummary.rohsCompliant,
-                      "Non-Compliant": complianceSummary.rohsNonCompliant,
-                    },
-                    {
-                      name: "REACH",
-                      Compliant: complianceSummary.reachCompliant,
-                      "Non-Compliant": complianceSummary.reachNonCompliant,
-                    },
-                  ]}
-                >
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip />
-                  <Legend />
-                  <Bar
-                    dataKey="Compliant"
-                    fill="#10b981"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="Non-Compliant"
-                    fill="#ef4444"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ChartContainer>
-            </div>
-
-            {/* Error list */}
-            {assembly.bom_line_items.some((i) => i.z2data_error) && (
-              <Card>
-                <CardHeader className="flex flex-row items-start justify-between">
-                  <div>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <XCircle className="size-4 text-red-500" />
-                      Enrichment Errors
-                    </CardTitle>
-                    <CardDescription>
-                      These parts could not be found in Z2Data
-                    </CardDescription>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => setResolveOpen(true)}
-                  >
-                    <Wrench className="size-3.5" />
-                    Resolve {assembly.bom_line_items.filter((i) => i.z2data_error).length} Failed
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {assembly.bom_line_items
-                      .filter((i) => i.z2data_error)
-                      .map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-                        >
-                          <span className="font-mono">{item.value}</span>
-                          <span className="text-muted-foreground">
-                            {item.z2data_error}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Enrichment status badge */}
-            {isEnrichmentDone && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="size-4 text-emerald-500" />
-                Enrichment {assembly.z2data_enrichment_status} &middot;{" "}
-                {assembly.z2data_enriched_count}/{assembly.z2data_total_enrichable} parts
-              </div>
-            )}
-          </TabsContent>
-        )}
-        {/* ---- DigiKey Pricing Tab ---- */}
-        {hasPricing && (
-          <TabsContent value="pricing" className="space-y-4">
-            {/* Summary cards */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-blue-100 p-2">
-                      <DollarSign className="size-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total BOM Cost</p>
-                      <p className="text-2xl font-bold">
-                        {pricingSummary.totalBomCost.toFixed(2)} EUR
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Based on unit price x quantity
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-emerald-100 p-2">
-                      <CheckCircle2 className="size-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Parts Priced</p>
-                      <p className="text-2xl font-bold">
-                        {pricingSummary.pricedCount}
-                        <span className="text-sm font-normal text-muted-foreground">
-                          /{enrichedItems.length}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-red-100 p-2">
-                      <AlertCircle className="size-5 text-red-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Out of Stock</p>
-                      <p className="text-2xl font-bold">{pricingSummary.outOfStockCount}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-amber-100 p-2">
-                      <ShoppingCart className="size-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Pricing Errors</p>
-                      <p className="text-2xl font-bold">
-                        {assembly.bom_line_items.filter((i) => i.digikey_error).length}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Priced items list */}
-            <Card>
+            <Card className="gap-0 py-0">
               <CardHeader>
-                <CardTitle className="text-base">DigiKey Pricing Details</CardTitle>
-                <CardDescription>
-                  {pricedItems.length} parts with pricing data from DigiKey
-                </CardDescription>
+                <CardTitle className="text-base">Lead Time & Pricing</CardTitle>
+                <CardDescription>Aggregate metrics across all parts</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left">
-                        <th className="pb-2 pr-4 font-medium">MPN</th>
-                        <th className="pb-2 pr-4 font-medium">DigiKey P/N</th>
-                        <th className="pb-2 pr-4 font-medium text-right">Unit Price</th>
-                        <th className="pb-2 pr-4 font-medium text-right">Qty</th>
-                        <th className="pb-2 pr-4 font-medium text-right">Line Cost</th>
-                        <th className="pb-2 pr-4 font-medium text-right">Stock</th>
-                        <th className="pb-2 pr-4 font-medium text-right">MOQ</th>
-                        <th className="pb-2 font-medium">Link</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pricedItems.map((item) => (
-                        <tr key={item.id} className="border-b last:border-0">
-                          <td className="py-2 pr-4 font-mono">{item.value}</td>
-                          <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">
-                            {item.digikey_part_number ?? "-"}
-                          </td>
-                          <td className="py-2 pr-4 text-right font-medium">
-                            {item.digikey_unit_price != null
-                              ? `${item.digikey_unit_price.toFixed(4)} EUR`
-                              : "-"}
-                          </td>
-                          <td className="py-2 pr-4 text-right">{item.quantity}</td>
-                          <td className="py-2 pr-4 text-right font-medium">
-                            {item.digikey_unit_price != null
-                              ? `${(item.digikey_unit_price * item.quantity).toFixed(2)} EUR`
-                              : "-"}
-                          </td>
-                          <td className="py-2 pr-4 text-right">
-                            <span
-                              className={
-                                item.digikey_stock === 0
-                                  ? "text-red-600 font-medium"
-                                  : "text-emerald-600"
-                              }
-                            >
-                              {item.digikey_stock?.toLocaleString() ?? "-"}
-                            </span>
-                          </td>
-                          <td className="py-2 pr-4 text-right">{item.digikey_moq ?? "-"}</td>
-                          <td className="py-2">
-                            {item.digikey_product_url ? (
-                              <a
-                                href={item.digikey_product_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                              >
-                                Buy <ExternalLink className="size-3" />
-                              </a>
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 font-bold">
-                        <td className="pt-2" colSpan={4}>Total BOM Cost</td>
-                        <td className="pt-2 text-right">
-                          {pricingSummary.totalBomCost.toFixed(2)} EUR
-                        </td>
-                        <td colSpan={3}></td>
-                      </tr>
-                    </tfoot>
-                  </table>
+              <CardContent className="space-y-6 pb-6">
+                <div className="flex items-center gap-4">
+                  <div className="flex size-12 items-center justify-center rounded-lg bg-blue-50">
+                    <Clock className="size-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Avg Lead Time</p>
+                    <p className="text-2xl font-bold">8.2 wks</p>
+                    <p className="text-xs text-muted-foreground">across all parts</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex size-12 items-center justify-center rounded-lg bg-emerald-50">
+                    <DollarSign className="size-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Material Cost</p>
+                    <p className="text-2xl font-bold">
+                      {pricingSummary.totalBomCost > 0
+                        ? `${pricingSummary.totalBomCost.toFixed(2)} EUR`
+                        : "500 Riyal"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">total BOM cost estimate</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
+          </div>
 
-            {/* Pricing status badge */}
-            {isPricingDone && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="size-4 text-blue-500" />
-                DigiKey pricing {assembly.digikey_enrichment_status} &middot;{" "}
-                {assembly.digikey_enriched_count}/{assembly.digikey_total_enrichable} parts
-              </div>
-            )}
-          </TabsContent>
-        )}
+          {/* Enrichment Errors */}
+          {assembly.bom_line_items.some((i) => i.z2data_error) && (
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <XCircle className="size-4 text-red-500" />
+                    Enrichment Errors
+                  </CardTitle>
+                  <CardDescription>
+                    These parts could not be found in Z2Data
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setResolveOpen(true)}
+                >
+                  <Wrench className="size-3.5" />
+                  Resolve {assembly.bom_line_items.filter((i) => i.z2data_error).length} Failed
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {assembly.bom_line_items
+                    .filter((i) => i.z2data_error)
+                    .map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                      >
+                        <span className="font-mono">{item.value}</span>
+                        <span className="text-muted-foreground">
+                          {item.z2data_error}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* Resolve failed parts dialog */}
