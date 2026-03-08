@@ -492,15 +492,6 @@ export default function AssemblyDetailPage({
   const [pricingError, setPricingError] = useState<string | null>(null);
   const pricingAbort = useRef(false);
 
-  // DigiKey authorization state
-  const [digikeyAuthorized, setDigikeyAuthorized] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/digikey/status")
-      .then((r) => r.json())
-      .then((d) => setDigikeyAuthorized(d.authorized))
-      .catch(() => setDigikeyAuthorized(false));
-  }, []);
 
   useEffect(() => {
     getAssembly(id).then((result) => {
@@ -821,23 +812,12 @@ export default function AssemblyDetailPage({
                   <DollarSign className="size-3.5" />
                   DigiKey Priced ({assembly.digikey_enriched_count}/{assembly.digikey_total_enrichable})
                 </Badge>
-              ) : digikeyAuthorized === false ? (
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  asChild
-                >
-                  <a href="/api/auth/digikey">
-                    <ShoppingCart className="size-4" />
-                    Connect DigiKey Account
-                  </a>
-                </Button>
               ) : (
                 <Button
                   variant="outline"
                   className="gap-2"
                   onClick={handleFetchPricing}
-                  disabled={pricingLoading || enriching || digikeyAuthorized === null}
+                  disabled={pricingLoading || enriching}
                 >
                   {pricingLoading ? (
                     <Loader2 className="size-4 animate-spin" />

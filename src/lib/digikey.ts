@@ -1,41 +1,12 @@
 // ---------------------------------------------------------------------------
 // DigiKey Product Information V4 API client — server-side only
-// Uses 3-legged OAuth2 (authorization code + refresh token)
+// Uses 2-legged OAuth2 (client credentials)
 // Docs: https://developer.digikey.com/products/product-information-v4
 // ---------------------------------------------------------------------------
 
-const SANDBOX = process.env.DIGIKEY_SANDBOX !== "false"; // default to sandbox
-const API_BASE = SANDBOX
-  ? "https://sandbox-api.digikey.com"
-  : "https://api.digikey.com";
+const API_BASE = "https://api.digikey.com";
 const TOKEN_URL = `${API_BASE}/v1/oauth2/token`;
-const AUTHORIZE_URL = `${API_BASE}/v1/oauth2/authorize`;
 const PRODUCTS_BASE = `${API_BASE}/products/v4`;
-
-// -- Supabase REST helper (same pattern as enrich/route.ts) --
-
-function ascii(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/[^\x20-\x7E]/g, "");
-}
-
-function getSupabaseConfig() {
-  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!rawUrl || !rawKey) {
-    throw new Error("Missing Supabase env vars");
-  }
-  const url = ascii(rawUrl).trim();
-  const key = ascii(rawKey).trim();
-  return {
-    url,
-    headers: {
-      "Content-Type": "application/json",
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-    },
-  };
-}
 
 // -- In-memory token cache --
 
@@ -52,164 +23,39 @@ function getCredentials() {
   return { clientId, clientSecret };
 }
 
-function getRedirectUri(): string {
-  const uri = process.env.DIGIKEY_REDIRECT_URI;
-  if (!uri) {
-    throw new Error("DIGIKEY_REDIRECT_URI must be configured");
-  }
-  return uri;
-}
+// -- OAuth2 token management (2-legged / client credentials) --
 
-// -- OAuth2 token management (3-legged) --
-
-/** Build the DigiKey authorization URL for the browser redirect. */
-export function getAuthorizationUrl(): string {
-  const { clientId } = getCredentials();
-  const redirectUri = getRedirectUri();
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: clientId,
-    redirect_uri: redirectUri,
-  });
-  return `${AUTHORIZE_URL}?${params.toString()}`;
-}
-
-/** Check if a token row exists in Supabase. */
-export async function isDigikeyAuthorized(): Promise<boolean> {
-  const { url, headers } = getSupabaseConfig();
-  const res = await fetch(
-    `${url}/rest/v1/digikey_oauth_tokens?select=id&id=eq.1`,
-    { method: "GET", headers }
-  );
-  if (!res.ok) return false;
-  const rows = await res.json();
-  return rows.length > 0;
-}
-
-/** Exchange an authorization code for access + refresh tokens, store in Supabase. */
-export async function exchangeCodeForTokens(code: string): Promise<void> {
-  const { clientId, clientSecret } = getCredentials();
-  const redirectUri = getRedirectUri();
-
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`DigiKey token exchange failed (${res.status}): ${text}`);
-  }
-
-  const data = await res.json();
-  await upsertTokens(data.access_token, data.refresh_token, data.expires_in);
-}
-
-/** Refresh the access token using the stored refresh token. */
-async function refreshAccessToken(refreshToken: string): Promise<string> {
-  const { clientId, clientSecret } = getCredentials();
-
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`DigiKey token refresh failed (${res.status}): ${text}`);
-  }
-
-  const data = await res.json();
-  await upsertTokens(data.access_token, data.refresh_token, data.expires_in);
-
-  return data.access_token;
-}
-
-/** Upsert token pair into Supabase (single-row table). */
-async function upsertTokens(
-  accessToken: string,
-  refreshToken: string,
-  expiresIn: number
-): Promise<void> {
-  const { url, headers } = getSupabaseConfig();
-  const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-
-  const res = await fetch(`${url}/rest/v1/digikey_oauth_tokens`, {
-    method: "POST",
-    headers: {
-      ...headers,
-      Prefer: "resolution=merge-duplicates",
-    },
-    body: JSON.stringify({
-      id: 1,
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_at: expiresAt,
-      updated_at: new Date().toISOString(),
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to store DigiKey tokens: ${text}`);
-  }
-
-  // Update in-memory cache
-  cachedToken = {
-    accessToken,
-    expiresAt: Date.now() + expiresIn * 1000,
-  };
-}
-
-/** Load token from cache or Supabase, refresh if expired. */
 async function getAccessToken(): Promise<string> {
   // Return cached token if still valid (60s buffer)
   if (cachedToken && Date.now() < cachedToken.expiresAt - 60_000) {
     return cachedToken.accessToken;
   }
 
-  // Load from Supabase
-  const { url, headers } = getSupabaseConfig();
-  const res = await fetch(
-    `${url}/rest/v1/digikey_oauth_tokens?select=access_token,refresh_token,expires_at&id=eq.1`,
-    { method: "GET", headers }
-  );
+  const { clientId, clientSecret } = getCredentials();
+
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+  });
 
   if (!res.ok) {
-    throw new Error("Failed to load DigiKey tokens from database");
+    const text = await res.text();
+    throw new Error(`DigiKey token request failed (${res.status}): ${text}`);
   }
 
-  const rows = await res.json();
-  if (rows.length === 0) {
-    throw new Error(
-      "DigiKey not authorized. Please connect your DigiKey account first."
-    );
-  }
+  const data = await res.json();
 
-  const row = rows[0];
-  const expiresAt = new Date(row.expires_at).getTime();
+  cachedToken = {
+    accessToken: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
 
-  // If token is still valid, cache and return it
-  if (Date.now() < expiresAt - 60_000) {
-    cachedToken = { accessToken: row.access_token, expiresAt };
-    return row.access_token;
-  }
-
-  // Token expired — refresh it
-  return refreshAccessToken(row.refresh_token);
+  return data.access_token;
 }
 
 // -- API request helper --
