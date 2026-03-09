@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PartFlow — Supply Chain Intelligence",
+  title: "Chipora — Supply Chain Intelligence",
   description: "Supply chain intelligence platform for electronic component management",
 };
 

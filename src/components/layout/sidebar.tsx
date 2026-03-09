@@ -69,7 +69,7 @@ export function Sidebar() {
           <Cpu className="size-4.5 text-white" />
         </div>
         <span className="text-lg font-bold tracking-tight text-white">
-          PartFlow
+          Chipora
         </span>
       </div>
 
@@ -191,7 +191,7 @@ export function Sidebar() {
       {/* Footer */}
       <Separator className="bg-slate-700/50" />
       <div className="px-4 py-3">
-        <p className="text-[10px] text-slate-600">PartFlow v0.1.0</p>
+        <p className="text-[10px] text-slate-600">Chipora v0.1.0</p>
       </div>
     </aside>
   );

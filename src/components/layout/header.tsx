@@ -51,7 +51,7 @@ export function Header() {
         <div className="flex size-8 items-center justify-center rounded-lg bg-blue-600">
           <Cpu className="size-4.5 text-white" />
         </div>
-        <span className="text-lg font-bold tracking-tight">PartFlow</span>
+        <span className="text-lg font-bold tracking-tight">Chipora</span>
       </Link>
 
       {/* Navigation tabs */}
@@ -121,7 +121,7 @@ export function Header() {
               <div className="flex flex-col">
                 <span className="text-sm font-medium">Jane Doe</span>
                 <span className="text-xs text-muted-foreground">
-                  jane@partflow.io
+                  jane@chipora.io
                 </span>
               </div>
             </DropdownMenuLabel>
