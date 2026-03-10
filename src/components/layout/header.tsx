@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Database,
   FileSpreadsheet,
@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { label: "Parts Database", href: "/", icon: Database },
+  { label: "Parts Database", href: "/overview", icon: Database },
   { label: "Projects", href: "/assemblies", icon: FileSpreadsheet },
   { label: "Sourcing", href: "/sourcing", icon: ShoppingCart },
   { label: "Supply Risk Cockpit", href: "/risk-manager", icon: ShieldCheck },
@@ -42,12 +42,18 @@ const navLinks = [
 
 export function Header() {
   const pathname = usePathname();
+  const router = useRouter();
   const [searchValue, setSearchValue] = useState("");
+
+  const handleSignOut = () => {
+    localStorage.removeItem("chipora_auth");
+    router.push("/login");
+  };
 
   return (
     <header className="flex shrink-0 items-center border-b bg-white">
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2.5 px-5 py-3 shrink-0">
+      <Link href="/overview" className="flex items-center gap-2.5 px-5 py-3 shrink-0">
         <div className="flex size-8 items-center justify-center rounded-lg bg-blue-600">
           <Cpu className="size-4.5 text-white" />
         </div>
@@ -58,9 +64,7 @@ export function Header() {
       <nav className="flex flex-1 items-center gap-0.5 overflow-x-auto px-2">
         {navLinks.map((link) => {
           const isActive =
-            link.href === "/"
-              ? pathname === "/"
-              : link.href !== "#" && pathname.startsWith(link.href);
+            link.href !== "#" && pathname.startsWith(link.href);
 
           return (
             <Link
@@ -135,7 +139,7 @@ export function Header() {
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="mr-2 size-4" />
               Sign out
             </DropdownMenuItem>
